@@ -44,6 +44,7 @@ namespace FanCurve
     public class FanService : IDisposable
     {
         readonly Computer _pc;
+        const int MaxIntervalMs = 500; // tope: asi los tiempos de reaccion de 0,5 s son reales
         readonly object _lock = new object();
         readonly Dictionary<string, ISensor> _byId = new Dictionary<string, ISensor>();
         readonly Dictionary<string, double> _smooth = new Dictionary<string, double>();
@@ -53,6 +54,7 @@ namespace FanCurve
         AppConfig _cfg;
         Snapshot _snap = new Snapshot();
         bool _disposed;
+        DateTime _lastUpdate = DateTime.MinValue;
 
         public FanService(AppConfig cfg)
         {
@@ -66,7 +68,7 @@ namespace FanCurve
             };
             _pc.Open();
             Tick(null); // primera lectura sincrona para poblar los combos
-            _timer = new Timer(Tick, null, cfg.IntervalMs, Timeout.Infinite);
+            _timer = new Timer(Tick, null, MaxIntervalMs, Timeout.Infinite);
         }
 
         public Snapshot GetSnapshot() { lock (_lock) return _snap; }
@@ -99,7 +101,7 @@ namespace FanCurve
                 lock (_lock)
                 {
                     if (_disposed) return;
-                    next = Math.Max(250, _cfg.IntervalMs);
+                    next = Math.Max(250, Math.Min(MaxIntervalMs, _cfg.IntervalMs));
                     Update();
                 }
             }
@@ -112,6 +114,11 @@ namespace FanCurve
 
         void Update()
         {
+            var now = DateTime.UtcNow;
+            double dt = _lastUpdate == DateTime.MinValue ? MaxIntervalMs / 1000.0 : (now - _lastUpdate).TotalSeconds;
+            dt = Math.Max(0.01, Math.Min(5, dt));
+            _lastUpdate = now;
+
             _pc.Accept(new UpdateVisitor());
             _byId.Clear();
             var snap = new Snapshot();
@@ -144,10 +151,16 @@ namespace FanCurve
                 }
                 else
                 {
-                    // Sube al instante, baja de a poco: evita que el ventilador oscile.
+                    // Filtro de 1er orden con tiempo de reaccion distinto para subida y bajada.
+                    // "Tiempo de reaccion" T = lo que tarda en cubrir ~95% del cambio (constante de tiempo = T/3).
                     double s;
-                    if (!_smooth.TryGetValue(rule.Id, out s) || t.Value >= s) s = t.Value;
-                    else s = s + (t.Value - s) * 0.15;
+                    if (!_smooth.TryGetValue(rule.Id, out s)) s = t.Value;
+                    else
+                    {
+                        double react = t.Value >= s ? rule.RiseSeconds : rule.FallSeconds;
+                        if (react <= 0) s = t.Value;
+                        else s += (t.Value - s) * (1 - Math.Exp(-dt / (react / 3.0)));
+                    }
                     _smooth[rule.Id] = s;
                     pct = Curve.Evaluate(rule.Points, s);
                     st.Temp = t;

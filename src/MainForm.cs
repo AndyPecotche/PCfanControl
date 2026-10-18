@@ -23,7 +23,9 @@ namespace FanCurve
         ListBox _list;
         TextBox _name;
         CheckBox _enabled, _autostart;
-        ComboBox _ctl, _temp;
+        ComboBox _ctl, _temp, _rise, _fall;
+        static readonly double[] ReactValues = { 0, 0.5, 1, 2 };
+        static readonly string[] ReactKeys = { "react.0", "react.0.5", "react.1", "react.2" };
         CurveControl _curve;
         Label _status;
         ListView _sensors;
@@ -124,7 +126,7 @@ namespace FanCurve
             _temp = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
             _temp.SelectedIndexChanged += (s, e) => { if (!_loading && Current != null && _temp.SelectedItem != null) Current.TempId = ((Item)_temp.SelectedItem).Id; };
 
-            var form = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 4 };
+            var form = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 6 };
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             Action<string, Control> row = (label, ctrl) =>
@@ -136,6 +138,10 @@ namespace FanCurve
             row(L.T("lbl.name"), _name);
             row(L.T("lbl.output"), _ctl);
             row(L.T("lbl.tempsource"), _temp);
+            _rise = MakeReactCombo(v => { if (Current != null) Current.RiseSeconds = v; });
+            _fall = MakeReactCombo(v => { if (Current != null) Current.FallSeconds = v; });
+            row(L.T("lbl.rise"), _rise);
+            row(L.T("lbl.fall"), _fall);
             row("", _enabled);
 
             _curve = new CurveControl { Dock = DockStyle.Fill };
@@ -179,6 +185,23 @@ namespace FanCurve
             menu.Items.Add(L.T("tray.exit"), null, (s, e) => { _exit = true; Close(); });
             _tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "FanCurve", Visible = true, ContextMenuStrip = menu };
             _tray.DoubleClick += (s, e) => ShowWindow();
+        }
+
+        ComboBox MakeReactCombo(Action<double> onChange)
+        {
+            var cb = new ComboBox { Dock = DockStyle.Left, Width = 160, DropDownStyle = ComboBoxStyle.DropDownList };
+            foreach (var k in ReactKeys) cb.Items.Add(L.T(k));
+            cb.SelectedIndex = 0;
+            cb.SelectedIndexChanged += (s, e) => { if (!_loading && cb.SelectedIndex >= 0) onChange(ReactValues[cb.SelectedIndex]); };
+            return cb;
+        }
+
+        static int NearestReact(double v)
+        {
+            int best = 0;
+            for (int i = 1; i < ReactValues.Length; i++)
+                if (Math.Abs(ReactValues[i] - v) < Math.Abs(ReactValues[best] - v)) best = i;
+            return best;
         }
 
         string SelectedControlId()
@@ -279,13 +302,15 @@ namespace FanCurve
             _loading = true;
             var r = Current;
             bool has = r != null;
-            _name.Enabled = _enabled.Enabled = _ctl.Enabled = _temp.Enabled = _curve.Enabled = has;
+            _name.Enabled = _enabled.Enabled = _ctl.Enabled = _temp.Enabled = _rise.Enabled = _fall.Enabled = _curve.Enabled = has;
             if (has)
             {
                 _name.Text = r.Name;
                 _enabled.Checked = r.Enabled;
                 Fill(_ctl, _ctlItems, r.ControlId);
                 Fill(_temp, _tempItems, r.TempId);
+                _rise.SelectedIndex = NearestReact(r.RiseSeconds);
+                _fall.SelectedIndex = NearestReact(r.FallSeconds);
                 _curve.Points = r.Points;
             }
             else

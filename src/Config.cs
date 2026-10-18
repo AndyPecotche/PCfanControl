@@ -19,6 +19,9 @@ namespace FanCurve
         public bool Enabled { get; set; } = true;
         public string ControlId { get; set; } = "";
         public string TempId { get; set; } = "";
+        // Tiempo de reaccion (s) ante subida / bajada de temperatura. 0 = inmediato.
+        public double RiseSeconds { get; set; } = 0;
+        public double FallSeconds { get; set; } = 2;
         public List<CurvePoint> Points { get; set; } = DefaultPoints();
 
         public override string ToString() { return Enabled ? Name : Name + L.T("rule.inactive"); }
@@ -39,7 +42,7 @@ namespace FanCurve
     public class AppConfig
     {
         public List<FanRule> Rules { get; set; } = new List<FanRule>();
-        public int IntervalMs { get; set; } = 1000;
+        public int IntervalMs { get; set; } = 500;
         // Velocidad a usar si la fuente de temperatura deja de dar lecturas.
         public double FailsafePercent { get; set; } = 100;
         // "en" / "es"; vacio = idioma del sistema.
