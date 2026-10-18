@@ -16,7 +16,7 @@ namespace FanCurve
         }
 
         readonly FanService _svc;
-        readonly AppConfig _cfg;       // copia de trabajo (se aplica con "Guardar y aplicar")
+        readonly AppConfig _cfg;       // working copy (applied with "Save and apply")
         bool _startHidden, _loading, _exit;
 
         ListBox _list;
@@ -35,11 +35,12 @@ namespace FanCurve
         {
             _startHidden = startHidden;
             _cfg = AppConfig.Load();
+            L.Lang = L.Detect(_cfg.Language);
 
             try { _svc = new FanService(_cfg.Clone()); }
             catch (Exception ex)
             {
-                MessageBox.Show("No se pudo iniciar la lectura de hardware:\n\n" + ex.Message, "FanCurve",
+                MessageBox.Show(L.T("msg.hwfail") + ex.Message, "FanCurve",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Environment.Exit(1);
             }
@@ -67,22 +68,31 @@ namespace FanCurve
             Icon = SystemIcons.Application;
 
             var tabs = new TabControl { Dock = DockStyle.Fill };
-            var tabRules = new TabPage("Reglas") { Padding = new Padding(8) };
-            var tabSensors = new TabPage("Sensores");
+            var tabRules = new TabPage(L.T("tab.rules")) { Padding = new Padding(8) };
+            var tabSensors = new TabPage(L.T("tab.sensors"));
             tabs.TabPages.Add(tabRules);
             tabs.TabPages.Add(tabSensors);
 
             // --- barra inferior ---
             var bottom = new Panel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(10, 8, 10, 8) };
-            var save = new Button { Text = "Guardar y aplicar", Width = 150, Dock = DockStyle.Right };
+            var save = new Button { Text = L.T("btn.save"), Width = 150, Dock = DockStyle.Right };
             save.Click += (s, e) => SaveAndApply();
-            _autostart = new CheckBox { Text = "Iniciar con Windows (en segundo plano)", Dock = DockStyle.Left, AutoSize = true, CheckAlign = ContentAlignment.MiddleLeft };
+            _autostart = new CheckBox { Text = L.T("chk.autostart"), Dock = DockStyle.Left, AutoSize = true, CheckAlign = ContentAlignment.MiddleLeft };
             _autostart.Checked = Autostart.IsEnabled();
             _autostart.CheckedChanged += (s, e) =>
             {
                 bool ok = _autostart.Checked ? Autostart.Enable() : Autostart.Disable();
-                if (!ok) MessageBox.Show("No se pudo modificar la tarea de inicio.", "FanCurve", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (!ok) MessageBox.Show(L.T("msg.autostart"), "FanCurve", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             };
+            var langBox = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
+            langBox.Items.AddRange(L.LanguageNames);
+            langBox.SelectedIndex = Array.IndexOf(L.Languages, L.Lang);
+            langBox.SelectedIndexChanged += (s, e) => { var l = L.Languages[langBox.SelectedIndex]; BeginInvoke((Action)(() => ChangeLanguage(l))); };
+            var langLabel = new Label { Text = L.T("lbl.language"), Dock = DockStyle.Left, Width = 62, TextAlign = ContentAlignment.MiddleRight };
+            var langPanel = new Panel { Dock = DockStyle.Right, Width = 230, Padding = new Padding(0, 0, 14, 0) };
+            langPanel.Controls.Add(langBox);
+            langPanel.Controls.Add(langLabel);
+            bottom.Controls.Add(langPanel);
             bottom.Controls.Add(save);
             bottom.Controls.Add(_autostart);
             Controls.Add(tabs);
@@ -91,8 +101,8 @@ namespace FanCurve
             // --- pestaña reglas: izquierda (lista) ---
             _list = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false };
             _list.SelectedIndexChanged += (s, e) => { if (!_loading) LoadRule(); };
-            var add = new Button { Text = "Agregar regla", Dock = DockStyle.Left, Width = 100 };
-            var del = new Button { Text = "Quitar", Dock = DockStyle.Right, Width = 80 };
+            var add = new Button { Text = L.T("btn.add"), Dock = DockStyle.Left, Width = 100 };
+            var del = new Button { Text = L.T("btn.remove"), Dock = DockStyle.Right, Width = 80 };
             add.Click += (s, e) => AddRule();
             del.Click += (s, e) => RemoveRule();
             var btns = new Panel { Dock = DockStyle.Bottom, Height = 34, Padding = new Padding(0, 6, 0, 0) };
@@ -105,7 +115,7 @@ namespace FanCurve
             // --- derecha (editor) ---
             _name = new TextBox { Dock = DockStyle.Fill };
             _name.TextChanged += (s, e) => { if (!_loading && Current != null) { Current.Name = _name.Text; RefreshList(); } };
-            _enabled = new CheckBox { Text = "Regla activa", AutoSize = true, Checked = true };
+            _enabled = new CheckBox { Text = L.T("chk.enabled"), AutoSize = true, Checked = true };
             _enabled.CheckedChanged += (s, e) => { if (!_loading && Current != null) OnEnabledChanged(); };
             _ctl = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
             _ctl.SelectedIndexChanged += (s, e) => { if (!_loading && Current != null && _ctl.SelectedItem != null) OnControlChanged(((Item)_ctl.SelectedItem).Id); };
@@ -121,14 +131,14 @@ namespace FanCurve
                 ctrl.Margin = new Padding(0, 3, 0, 3);
                 form.Controls.Add(ctrl);
             };
-            row("Nombre", _name);
-            row("Salida (ventilador)", _ctl);
-            row("Fuente de temperatura", _temp);
+            row(L.T("lbl.name"), _name);
+            row(L.T("lbl.output"), _ctl);
+            row(L.T("lbl.tempsource"), _temp);
             row("", _enabled);
 
             _curve = new CurveControl { Dock = DockStyle.Fill };
 
-            var hint = new Label { Text = "Arrastrá los puntos · doble clic para agregar uno · clic derecho sobre un punto para quitarlo",
+            var hint = new Label { Text = L.T("lbl.hint"),
                 Dock = DockStyle.Top, Height = 20, ForeColor = SystemColors.GrayText };
             _status = new Label { Dock = DockStyle.Top, Height = 22, Font = new Font(Font, FontStyle.Bold) };
             var info = new Panel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 4, 0, 0) };
@@ -145,16 +155,16 @@ namespace FanCurve
 
             // --- pestaña sensores ---
             _sensors = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, MultiSelect = false, HideSelection = false };
-            _sensors.Columns.Add("Tipo", 70);
+            _sensors.Columns.Add(L.T("col.type"), 70);
             _sensors.Columns.Add("Hardware", 210);
             _sensors.Columns.Add("Sensor", 190);
-            _sensors.Columns.Add("Valor", 80);
+            _sensors.Columns.Add(L.T("col.value"), 80);
             _sensors.Columns.Add("Id", 240);
-            _sensors.Columns.Add("Modo", 90);
+            _sensors.Columns.Add(L.T("col.mode"), 90);
             var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(6) };
-            var test = new Button { Text = "Probar salida al 100% (8 s)", AutoSize = true };
-            var stop = new Button { Text = "Cancelar prueba", AutoSize = true };
-            var tip = new Label { Text = "Elegí una fila «Control» y mirá qué ventilador (RPM) reacciona. «Modo» debe pasar a Software.", AutoSize = true, Padding = new Padding(8, 6, 0, 0), ForeColor = SystemColors.GrayText };
+            var test = new Button { Text = L.T("btn.test"), AutoSize = true };
+            var stop = new Button { Text = L.T("btn.canceltest"), AutoSize = true };
+            var tip = new Label { Text = L.T("lbl.sensortip"), AutoSize = true, Padding = new Padding(8, 6, 0, 0), ForeColor = SystemColors.GrayText };
             test.Click += (s, e) => { var id = SelectedControlId(); if (id != null) _svc.TestControl(id, 8); };
             stop.Click += (s, e) => { var id = SelectedControlId(); if (id != null) _svc.CancelTest(id); };
             bar.Controls.AddRange(new Control[] { test, stop, tip });
@@ -163,8 +173,8 @@ namespace FanCurve
 
             // --- bandeja ---
             var menu = new ContextMenuStrip();
-            menu.Items.Add("Abrir", null, (s, e) => ShowWindow());
-            menu.Items.Add("Salir (ventiladores a automático)", null, (s, e) => { _exit = true; Close(); });
+            menu.Items.Add(L.T("tray.open"), null, (s, e) => ShowWindow());
+            menu.Items.Add(L.T("tray.exit"), null, (s, e) => { _exit = true; Close(); });
             _tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "FanCurve", Visible = true, ContextMenuStrip = menu };
             _tray.DoubleClick += (s, e) => ShowWindow();
         }
@@ -173,7 +183,28 @@ namespace FanCurve
         {
             if (_sensors.SelectedItems.Count == 0) return null;
             var it = _sensors.SelectedItems[0];
-            return it.SubItems[0].Text == "Control" ? it.SubItems[4].Text : null;
+            return (it.Tag is SensorType && (SensorType)it.Tag == SensorType.Control) ? it.SubItems[4].Text : null;
+        }
+
+        // Reconstruye toda la interfaz con el idioma elegido, conservando las reglas en edicion.
+        void ChangeLanguage(string lang)
+        {
+            if (lang == L.Lang) return;
+            L.Lang = lang;
+            _cfg.Language = lang;
+            try { AppConfig.SaveLanguage(lang); } catch { }
+
+            int sel = _list.SelectedIndex;
+            _tray.Visible = false;
+            _tray.Dispose();
+            var size = ClientSize;
+            SuspendLayout();
+            foreach (var c in Controls.Cast<Control>().ToList()) { Controls.Remove(c); c.Dispose(); }
+            BuildUi();
+            ClientSize = size;
+            BindRules();
+            if (sel >= 0 && sel < _list.Items.Count) _list.SelectedIndex = sel;
+            ResumeLayout(true);
         }
 
         // ---------- ventana oculta / bandeja ----------
@@ -235,7 +266,7 @@ namespace FanCurve
             var sel = items.FirstOrDefault(i => i.Id == selectedId);
             if (sel == null && !string.IsNullOrEmpty(selectedId))
             {
-                sel = new Item { Id = selectedId, Text = "(no disponible) " + selectedId };
+                sel = new Item { Id = selectedId, Text = L.T("item.unavailable") + selectedId };
                 cb.Items.Add(sel);
             }
             cb.SelectedItem = sel;
@@ -298,9 +329,8 @@ namespace FanCurve
             var other = ConflictWith(r);
             if (other == null) return true;
             var res = MessageBox.Show(
-                "La salida «" + ControlName(r.ControlId) + "» ya tiene una regla activa: «" + other.Name + "».\n\n" +
-                "Si activás «" + r.Name + "», se desactivará «" + other.Name + "» (queda guardada, pero inactiva).\n\n¿Continuar?",
-                "Salida ya en uso", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                L.F("conflict.msg", ControlName(r.ControlId), other.Name, r.Name),
+                L.T("conflict.title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (res != DialogResult.Yes) return false;
             foreach (var o in _cfg.Rules.Where(o => o != r && o.Enabled && o.ControlId == r.ControlId)) o.Enabled = false;
             return true;
@@ -333,7 +363,7 @@ namespace FanCurve
 
         void AddRule()
         {
-            var r = new FanRule { Name = "Regla " + (_cfg.Rules.Count + 1) };
+            var r = new FanRule { Name = L.F("rule.new", _cfg.Rules.Count + 1) };
             if (_ctlItems.Count > 0) r.ControlId = _ctlItems[0].Id;
             var hot = _tempItems.FirstOrDefault(i => i.Text.IndexOf("Hot Spot", StringComparison.OrdinalIgnoreCase) >= 0)
                       ?? _tempItems.FirstOrDefault(i => i.Text.IndexOf("Package", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -370,7 +400,7 @@ namespace FanCurve
 
             using (var dlg = new Form())
             {
-                dlg.Text = "Configuración peligrosa";
+                dlg.Text = L.T("danger.title");
                 dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                 dlg.StartPosition = FormStartPosition.CenterParent;
                 dlg.MaximizeBox = dlg.MinimizeBox = false;
@@ -382,15 +412,13 @@ namespace FanCurve
                 dlg.Controls.Add(new Label
                 {
                     Left = 74, Top = 14, Width = 450, Height = 255,
-                    Text = "PELIGRO: velocidad menor al 30% por encima de 70 °C\n\n" +
-                           "Estas reglas dejan el ventilador por debajo del 30% con más de 70 °C:\n\n" +
+                    Text = L.T("danger.head") + "\n\n" +
+                           L.T("danger.list") + "\n\n" +
                            string.Join("\n", risky.Select(r => "  •  " + r.Name + "  →  " + ControlName(r.ControlId))) + "\n\n" +
-                           "Revisá el ventilador al que estás asignando la curva. Si es el de una GPU o un CPU, " +
-                           "esta configuración podría ser peligrosa (sobrecalentamiento) o reducir el rendimiento. " +
-                           "Si es un ventilador de gabinete, es seguro continuar.",
+                           L.T("danger.advice"),
                 });
-                var ok = new Button { Text = "Entiendo", DialogResult = DialogResult.OK, Left = 320, Top = 280, Width = 100 };
-                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Left = 430, Top = 280, Width = 100 };
+                var ok = new Button { Text = L.T("btn.understand"), DialogResult = DialogResult.OK, Left = 320, Top = 280, Width = 100 };
+                var cancel = new Button { Text = L.T("btn.cancel"), DialogResult = DialogResult.Cancel, Left = 430, Top = 280, Width = 100 };
                 dlg.Controls.Add(ok);
                 dlg.Controls.Add(cancel);
                 dlg.AcceptButton = cancel; // por defecto, la opcion segura
@@ -407,16 +435,16 @@ namespace FanCurve
                                .GroupBy(r => r.ControlId).FirstOrDefault(g => g.Count() > 1);
             if (dup != null)
             {
-                MessageBox.Show("La salida «" + ControlName(dup.Key) + "» tiene más de una regla activa. Dejá solo una activa.",
+                MessageBox.Show(L.F("dup.msg", ControlName(dup.Key)),
                     "FanCurve", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            if (!ConfirmRisky()) { _status.Text = "Cancelado: la configuración no se aplicó."; return; }
+            if (!ConfirmRisky()) { _status.Text = L.T("status.cancelled"); return; }
 
             try { _cfg.Save(); }
-            catch (Exception ex) { MessageBox.Show("No se pudo guardar la configuración:\n" + ex.Message); return; }
+            catch (Exception ex) { MessageBox.Show(L.T("msg.savefail") + ex.Message); return; }
             _svc.SetConfig(_cfg.Clone());
-            _status.Text = "Configuración aplicada.";
+            _status.Text = L.T("status.applied");
         }
 
         // ---------- lectura en vivo ----------
@@ -435,7 +463,7 @@ namespace FanCurve
                 _curve.Invalidate();
                 if (st.Message != null) _status.Text = st.Message;
                 else if (st.Temp.HasValue && st.Percent.HasValue)
-                    _status.Text = string.Format("Ahora: {0:0.#} °C  →  {1:0} %", st.Temp, st.Percent);
+                    _status.Text = L.F("status.now", st.Temp, st.Percent);
             }
 
             _sensors.BeginUpdate();
@@ -449,7 +477,7 @@ namespace FanCurve
                     : "-";
                 ListViewItem it;
                 if (existing.TryGetValue(s.Id, out it)) { it.SubItems[3].Text = val; it.SubItems[5].Text = s.Mode ?? ""; }
-                else _sensors.Items.Add(new ListViewItem(new[] { s.Type == SensorType.Control ? "Control" : s.Type == SensorType.Fan ? "Fan" : "Temp", s.Hardware, s.Name, val, s.Id, s.Mode ?? "" }));
+                else _sensors.Items.Add(new ListViewItem(new[] { L.T(s.Type == SensorType.Control ? "type.control" : s.Type == SensorType.Fan ? "type.fan" : "type.temp"), s.Hardware, s.Name, val, s.Id, s.Mode ?? "" }) { Tag = s.Type });
             }
             _sensors.EndUpdate();
         }

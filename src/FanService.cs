@@ -128,7 +128,7 @@ namespace FanCurve
                 ISensor ctl;
                 if (string.IsNullOrEmpty(rule.ControlId) || !_byId.TryGetValue(rule.ControlId, out ctl) || ctl.Control == null)
                 {
-                    st.Message = "Salida de ventilador no disponible";
+                    st.Message = L.T("svc.nooutput");
                     continue;
                 }
 
@@ -140,7 +140,7 @@ namespace FanCurve
                 if (t == null)
                 {
                     pct = _cfg.FailsafePercent;
-                    st.Message = "Sin lectura de temperatura, usando " + (int)pct + "%";
+                    st.Message = L.F("svc.noreading", (int)pct);
                 }
                 else
                 {

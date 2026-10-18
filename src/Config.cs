@@ -15,13 +15,13 @@ namespace FanCurve
     public class FanRule
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
-        public string Name { get; set; } = "Nueva regla";
+        public string Name { get; set; } = "New rule";
         public bool Enabled { get; set; } = true;
         public string ControlId { get; set; } = "";
         public string TempId { get; set; } = "";
         public List<CurvePoint> Points { get; set; } = DefaultPoints();
 
-        public override string ToString() { return Enabled ? Name : Name + " (inactiva)"; }
+        public override string ToString() { return Enabled ? Name : Name + L.T("rule.inactive"); }
 
         public static List<CurvePoint> DefaultPoints()
         {
@@ -42,6 +42,8 @@ namespace FanCurve
         public int IntervalMs { get; set; } = 1000;
         // Velocidad a usar si la fuente de temperatura deja de dar lecturas.
         public double FailsafePercent { get; set; } = 100;
+        // "en" / "es"; vacio = idioma del sistema.
+        public string Language { get; set; }
 
         static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FanCurve");
         static string FilePath => Path.Combine(Dir, "config.json");
@@ -64,6 +66,14 @@ namespace FanCurve
         {
             Directory.CreateDirectory(Dir);
             File.WriteAllText(FilePath, new JavaScriptSerializer().Serialize(this));
+        }
+
+        // Guarda solo el idioma, sin tocar las reglas guardadas.
+        public static void SaveLanguage(string lang)
+        {
+            var c = Load();
+            c.Language = lang;
+            c.Save();
         }
 
         public AppConfig Clone()

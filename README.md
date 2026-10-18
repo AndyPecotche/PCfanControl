@@ -115,7 +115,7 @@ Rules are stored in `%APPDATA%\FanCurve\config.json` and edited from the UI. Adv
 
 - Fan **control** depends on your hardware being supported by LibreHardwareMonitor (most Nuvoton/ITE Super I/O chips, many GPUs). If no *Control* channels appear in the Sensors tab, FanCurve can't drive your fans.
 - If the process is killed forcefully (e.g. *End task*), fans stay at the last written speed until FanCurve is started again or the PC restarts. A normal exit restores automatic control.
-- The UI is currently in Spanish.
+- The UI is available in English and Spanish (language selector at the bottom of the window; it defaults to your system language).
 
 ## Safety
 
@@ -242,7 +242,7 @@ Las reglas se guardan en `%APPDATA%\FanCurve\config.json` y se editan desde la i
 
 - El **control** de ventiladores depende de que tu hardware sea compatible con LibreHardwareMonitor (la mayoría de los chips Super I/O Nuvoton/ITE y muchas GPUs). Si en la pestaña Sensores no aparece ningún canal *Control*, FanCurve no puede manejar tus ventiladores.
 - Si el proceso se cierra a la fuerza (por ejemplo, *Finalizar tarea*), los ventiladores quedan en la última velocidad escrita hasta que FanCurve vuelva a iniciarse o se reinicie la PC. Un cierre normal restaura el control automático.
-- Por ahora la interfaz está en español.
+- La interfaz está disponible en inglés y español (selector de idioma abajo en la ventana; por defecto usa el idioma del sistema).
 
 ## Seguridad
 
