@@ -59,7 +59,7 @@ namespace FanCurve
 
         void BuildUi()
         {
-            Text = "FanCurve";
+            Text = "FanCurve v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
             ClientSize = new Size(900, 600);
             MinimumSize = new Size(780, 540);
             StartPosition = FormStartPosition.CenterScreen;
@@ -89,8 +89,8 @@ namespace FanCurve
             Controls.Add(bottom);
 
             // --- pestaña reglas: izquierda (lista) ---
-            _list = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, DisplayMember = "Name" };
-            _list.SelectedIndexChanged += (s, e) => LoadRule();
+            _list = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false };
+            _list.SelectedIndexChanged += (s, e) => { if (!_loading) LoadRule(); };
             var add = new Button { Text = "Agregar regla", Dock = DockStyle.Left, Width = 100 };
             var del = new Button { Text = "Quitar", Dock = DockStyle.Right, Width = 80 };
             add.Click += (s, e) => AddRule();
@@ -104,11 +104,11 @@ namespace FanCurve
 
             // --- derecha (editor) ---
             _name = new TextBox { Dock = DockStyle.Fill };
-            _name.TextChanged += (s, e) => { if (!_loading && Current != null) { Current.Name = _name.Text; RefreshListItem(); } };
+            _name.TextChanged += (s, e) => { if (!_loading && Current != null) { Current.Name = _name.Text; RefreshList(); } };
             _enabled = new CheckBox { Text = "Regla activa", AutoSize = true, Checked = true };
-            _enabled.CheckedChanged += (s, e) => { if (!_loading && Current != null) Current.Enabled = _enabled.Checked; };
+            _enabled.CheckedChanged += (s, e) => { if (!_loading && Current != null) OnEnabledChanged(); };
             _ctl = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-            _ctl.SelectedIndexChanged += (s, e) => { if (!_loading && Current != null && _ctl.SelectedItem != null) Current.ControlId = ((Item)_ctl.SelectedItem).Id; };
+            _ctl.SelectedIndexChanged += (s, e) => { if (!_loading && Current != null && _ctl.SelectedItem != null) OnControlChanged(((Item)_ctl.SelectedItem).Id); };
             _temp = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
             _temp.SelectedIndexChanged += (s, e) => { if (!_loading && Current != null && _temp.SelectedItem != null) Current.TempId = ((Item)_temp.SelectedItem).Id; };
 
@@ -267,13 +267,68 @@ namespace FanCurve
             _loading = false;
         }
 
-        void RefreshListItem()
+        // Redibuja los nombres de la lista (nombre / estado) sin disparar el cambio de seleccion.
+        void RefreshList()
         {
-            int i = _list.SelectedIndex;
-            if (i < 0) return;
+            int sel = _list.SelectedIndex;
             _loading = true;
-            _list.Items[i] = _list.Items[i]; // fuerza redibujar el nombre
-            _loading = false;
+            try
+            {
+                for (int i = 0; i < _list.Items.Count; i++) _list.Items[i] = _list.Items[i];
+                _list.SelectedIndex = sel;
+            }
+            finally { _loading = false; }
+        }
+
+        string ControlName(string id)
+        {
+            var it = _ctlItems.FirstOrDefault(i => i.Id == id);
+            return it != null ? it.Text : id;
+        }
+
+        FanRule ConflictWith(FanRule r)
+        {
+            if (string.IsNullOrEmpty(r.ControlId)) return null;
+            return _cfg.Rules.FirstOrDefault(o => o != r && o.Enabled && o.ControlId == r.ControlId);
+        }
+
+        // Una sola regla activa por salida: pide confirmacion y desactiva la otra.
+        bool ResolveConflict(FanRule r)
+        {
+            var other = ConflictWith(r);
+            if (other == null) return true;
+            var res = MessageBox.Show(
+                "La salida «" + ControlName(r.ControlId) + "» ya tiene una regla activa: «" + other.Name + "».\n\n" +
+                "Si activás «" + r.Name + "», se desactivará «" + other.Name + "» (queda guardada, pero inactiva).\n\n¿Continuar?",
+                "Salida ya en uso", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (res != DialogResult.Yes) return false;
+            foreach (var o in _cfg.Rules.Where(o => o != r && o.Enabled && o.ControlId == r.ControlId)) o.Enabled = false;
+            return true;
+        }
+
+        void OnEnabledChanged()
+        {
+            var r = Current;
+            r.Enabled = _enabled.Checked;
+            if (r.Enabled && !ResolveConflict(r))
+            {
+                r.Enabled = false;
+                _loading = true; _enabled.Checked = false; _loading = false;
+            }
+            RefreshList();
+        }
+
+        void OnControlChanged(string newId)
+        {
+            var r = Current;
+            string old = r.ControlId;
+            r.ControlId = newId;
+            if (r.Enabled && !ResolveConflict(r))
+            {
+                r.ControlId = old;
+                _loading = true; Fill(_ctl, _ctlItems, old); _loading = false;
+            }
+            RefreshList();
         }
 
         void AddRule()
@@ -284,6 +339,7 @@ namespace FanCurve
                       ?? _tempItems.FirstOrDefault(i => i.Text.IndexOf("Package", StringComparison.OrdinalIgnoreCase) >= 0)
                       ?? _tempItems.FirstOrDefault();
             if (hot != null) r.TempId = hot.Id;
+            if (ConflictWith(r) != null) r.Enabled = false; // ya hay otra regla activa en esa salida
             _cfg.Rules.Add(r);
             _list.Items.Add(r);
             _list.SelectedItem = r;
@@ -299,9 +355,64 @@ namespace FanCurve
             if (_list.Items.Count > 0) _list.SelectedIndex = Math.Min(i, _list.Items.Count - 1); else LoadRule();
         }
 
+        // Reglas cuya curva deja el ventilador por debajo del 30% con mas de 70 °C.
+        static bool IsRisky(FanRule r)
+        {
+            var temps = new List<double> { 70.01, 100 };
+            temps.AddRange(r.Points.Where(p => p.Temp > 70).Select(p => p.Temp));
+            return temps.Any(t => Curve.Evaluate(r.Points, t) < 30);
+        }
+
+        bool ConfirmRisky()
+        {
+            var risky = _cfg.Rules.Where(r => r.Enabled && IsRisky(r)).ToList();
+            if (risky.Count == 0) return true;
+
+            using (var dlg = new Form())
+            {
+                dlg.Text = "Configuración peligrosa";
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.MaximizeBox = dlg.MinimizeBox = false;
+                dlg.ShowInTaskbar = false;
+                dlg.ClientSize = new Size(540, 320);
+                dlg.Font = Font;
+
+                dlg.Controls.Add(new PictureBox { Image = SystemIcons.Warning.ToBitmap(), SizeMode = PictureBoxSizeMode.CenterImage, Left = 14, Top = 14, Width = 48, Height = 48 });
+                dlg.Controls.Add(new Label
+                {
+                    Left = 74, Top = 14, Width = 450, Height = 255,
+                    Text = "PELIGRO: velocidad menor al 30% por encima de 70 °C\n\n" +
+                           "Estas reglas dejan el ventilador por debajo del 30% con más de 70 °C:\n\n" +
+                           string.Join("\n", risky.Select(r => "  •  " + r.Name + "  →  " + ControlName(r.ControlId))) + "\n\n" +
+                           "Revisá el ventilador al que estás asignando la curva. Si es el de una GPU o un CPU, " +
+                           "esta configuración podría ser peligrosa (sobrecalentamiento) o reducir el rendimiento. " +
+                           "Si es un ventilador de gabinete, es seguro continuar.",
+                });
+                var ok = new Button { Text = "Entiendo", DialogResult = DialogResult.OK, Left = 320, Top = 280, Width = 100 };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Left = 430, Top = 280, Width = 100 };
+                dlg.Controls.Add(ok);
+                dlg.Controls.Add(cancel);
+                dlg.AcceptButton = cancel; // por defecto, la opcion segura
+                dlg.CancelButton = cancel;
+                return dlg.ShowDialog(this) == DialogResult.OK;
+            }
+        }
+
         void SaveAndApply()
         {
             foreach (var r in _cfg.Rules) r.Points = r.Points.OrderBy(p => p.Temp).ToList();
+
+            var dup = _cfg.Rules.Where(r => r.Enabled && !string.IsNullOrEmpty(r.ControlId))
+                               .GroupBy(r => r.ControlId).FirstOrDefault(g => g.Count() > 1);
+            if (dup != null)
+            {
+                MessageBox.Show("La salida «" + ControlName(dup.Key) + "» tiene más de una regla activa. Dejá solo una activa.",
+                    "FanCurve", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (!ConfirmRisky()) { _status.Text = "Cancelado: la configuración no se aplicó."; return; }
+
             try { _cfg.Save(); }
             catch (Exception ex) { MessageBox.Show("No se pudo guardar la configuración:\n" + ex.Message); return; }
             _svc.SetConfig(_cfg.Clone());

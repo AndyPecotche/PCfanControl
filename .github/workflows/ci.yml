@@ -1,0 +1,22 @@
+name: CI
+
+# Verifica que el proyecto compila en cada push a main y en cada pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar en Docker
+        run: docker compose run --rm build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FanCurve-dev-build
+          path: dist/*.zip
+          retention-days: 14

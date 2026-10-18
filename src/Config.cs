@@ -21,6 +21,8 @@ namespace FanCurve
         public string TempId { get; set; } = "";
         public List<CurvePoint> Points { get; set; } = DefaultPoints();
 
+        public override string ToString() { return Enabled ? Name : Name + " (inactiva)"; }
+
         public static List<CurvePoint> DefaultPoints()
         {
             return new List<CurvePoint>

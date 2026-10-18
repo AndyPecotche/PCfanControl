@@ -1,6 +1,9 @@
 services:
   build:
     build: .
+    environment:
+      # Version a embeber en el ejecutable y en el nombre del zip. En CI viene del tag (v1.2.3 -> 1.2.3).
+      VERSION: ${VERSION:-0.0.0-dev}
     volumes:
       - ./src:/src
       - ./dist:/out
@@ -11,9 +14,9 @@ services:
       - |
         set -e
         rm -rf /out/* /tmp/stage
-        dotnet publish /src/FanCurve.csproj -c Release -o /tmp/stage -p:BaseIntermediateOutputPath=/tmp/obj/
+        dotnet publish /src/FanCurve.csproj -c Release -o /tmp/stage -p:BaseIntermediateOutputPath=/tmp/obj/ -p:Version=$${VERSION}
         cp -r /tmp/stage/. /out/
-        cd /tmp/stage && zip -q -r /out/FanCurve-portable.zip .
+        cd /tmp/stage && zip -q -r /out/FanCurve-$${VERSION}-win-x64.zip .
         ls -la /out
 
 volumes:
