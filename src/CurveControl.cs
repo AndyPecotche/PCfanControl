@@ -128,7 +128,7 @@ namespace FanCurve
                     g.DrawLine(grid, a.X, r.Top, a.X, r.Bottom);
                     g.DrawString(t + "°", Font, txt, a.X - 10, r.Bottom + 4);
                 }
-                for (int p = 0; p <= 100; p += 20)
+                for (int p = 0; p <= 100; p += 10)
                 {
                     var a = ToPx(TMin, p);
                     g.DrawLine(grid, r.Left, a.Y, r.Right, a.Y);
@@ -150,7 +150,7 @@ namespace FanCurve
                 using (var b = new SolidBrush(Color.SteelBlue))
                 {
                     g.DrawString("RPM", Font, b, r.Right + 6, r.Top - 11);
-                    for (int p = 0; p <= 100; p += 20)
+                    for (int p = 0; p <= 100; p += 10)
                     {
                         var a = ToPx(TMax, p);
                         g.DrawString(((int)Math.Round(RpmForPercent(p))).ToString(), Font, b, r.Right + 6, a.Y - 7);
