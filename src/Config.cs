@@ -47,6 +47,8 @@ namespace FanCurve
         public double FailsafePercent { get; set; } = 100;
         // "en" / "es"; vacio = idioma del sistema.
         public string Language { get; set; }
+        // Preferencia de vista: dibujar la curva por defecto de la placa en el grafico.
+        public bool ShowDefaultCurve { get; set; }
 
         static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FanCurve");
         static string FilePath => Path.Combine(Dir, "config.json");
@@ -76,6 +78,14 @@ namespace FanCurve
         {
             var c = Load();
             c.Language = lang;
+            c.Save();
+        }
+
+        // Guarda una preferencia de interfaz sin tocar las reglas guardadas.
+        public static void UpdatePrefs(Action<AppConfig> mutate)
+        {
+            var c = Load();
+            mutate(c);
             c.Save();
         }
 

@@ -16,7 +16,8 @@ namespace FanCurve
         public List<CurvePoint> Points = new List<CurvePoint>();
         public double? CurrentTemp;
         public double? CurrentPercent;   // regla aplicada: punto sobre la curva
-        public double? OutputPercent;    // regla no aplicada: velocidad real de la salida (linea azul)
+        public double? OutputPercent;
+        public List<CurvePoint> DefaultCurve;   // curva aprendida de la placa (linea negra punteada fina)    // regla no aplicada: velocidad real de la salida (linea azul)
         public event EventHandler Changed;
 
         int _drag = -1;
@@ -133,6 +134,24 @@ namespace FanCurve
                 }
             }
             g.DrawRectangle(Pens.Gray, r);
+
+            // curva por defecto: por detras de la personalizada
+            if (DefaultCurve != null && DefaultCurve.Count > 0)
+            {
+                using (var pen = new Pen(Color.Black, 1f) { DashStyle = DashStyle.Dot })
+                {
+                    var seg = new List<PointF>();
+                    double lastT = double.NaN;
+                    Action flush = () => { if (seg.Count > 1) g.DrawLines(pen, seg.ToArray()); seg.Clear(); };
+                    foreach (var d in DefaultCurve.OrderBy(x => x.Temp))
+                    {
+                        if (!double.IsNaN(lastT) && d.Temp - lastT > 5) flush(); // no unir tramos sin datos
+                        seg.Add(ToPx(d.Temp, d.Percent));
+                        lastT = d.Temp;
+                    }
+                    flush();
+                }
+            }
 
             var pts = Points.OrderBy(x => x.Temp).ToList();
             if (pts.Count > 0)

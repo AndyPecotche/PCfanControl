@@ -22,7 +22,7 @@ namespace FanCurve
 
         ListBox _list;
         TextBox _name;
-        CheckBox _enabled, _autostart;
+        CheckBox _enabled, _autostart, _showDefault;
         ComboBox _ctl, _temp, _rise, _fall;
         static readonly double[] ReactValues = { 0, 0.5, 1, 2 };
         static readonly double[] SampleValues = { 250, 500, 1000, 2000, 5000 };
@@ -166,7 +166,16 @@ namespace FanCurve
             var hint = new Label { Text = L.T("lbl.hint"),
                 Dock = DockStyle.Top, Height = 20, ForeColor = SystemColors.GrayText };
             _status = new Label { Dock = DockStyle.Top, Height = 22, Font = new Font(Font, FontStyle.Bold) };
-            var info = new Panel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 4, 0, 0) };
+            _showDefault = new CheckBox { Text = L.T("chk.showdefault"), Dock = DockStyle.Top, Height = 24, Checked = _cfg.ShowDefaultCurve };
+            _showDefault.CheckedChanged += (s, e) =>
+            {
+                _cfg.ShowDefaultCurve = _showDefault.Checked;
+                bool v = _showDefault.Checked;
+                try { AppConfig.UpdatePrefs(c => c.ShowDefaultCurve = v); } catch { }
+                RefreshLive();
+            };
+            var info = new Panel { Dock = DockStyle.Bottom, Height = 70, Padding = new Padding(0, 4, 0, 0) };
+            info.Controls.Add(_showDefault);
             info.Controls.Add(_status);
             info.Controls.Add(hint);
 
@@ -499,7 +508,8 @@ namespace FanCurve
         string Fingerprint()
         {
             var c = _cfg.Clone();
-            c.Language = null; // el idioma no cuenta como cambio de configuracion
+            c.Language = null; // idioma y vista no cuentan como cambio de configuracion
+            c.ShowDefaultCurve = false;
             return new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(c);
         }
 
@@ -537,6 +547,14 @@ namespace FanCurve
                     _curve.OutputPercent = outSensor != null ? outSensor.Value : null;
                     text = L.T("status.notapplied");
                 }
+                // curva por defecto de la placa para esta salida + fuente (si esta tildado)
+                List<CurvePoint> def = null;
+                if (_showDefault.Checked && !string.IsNullOrEmpty(r.ControlId) && !string.IsNullOrEmpty(r.TempId))
+                {
+                    def = _svc.GetDefaultCurve(r.ControlId, r.TempId);
+                    if (def.Count == 0) text += (text.Length > 0 ? "  ·  " : "") + L.T("status.nodefault");
+                }
+                _curve.DefaultCurve = def;
                 if (IsDirty()) text += (text.Length > 0 ? "  ·  " : "") + L.T("status.dirty");
                 _status.Text = text;
                 _curve.Invalidate();

@@ -55,6 +55,10 @@ namespace FanCurve
         Snapshot _snap = new Snapshot();
         bool _disposed;
         DateTime _lastUpdate = DateTime.MinValue;
+        readonly DefaultCurveStore _defaults = DefaultCurveStore.Load();
+        readonly Dictionary<string, DateTime> _released = new Dictionary<string, DateTime>();
+        bool _defaultsDirty;
+        DateTime _lastDefaultsSave = DateTime.UtcNow;
 
         public FanService(AppConfig cfg)
         {
@@ -188,10 +192,50 @@ namespace FanCurve
             {
                 ISensor ctl;
                 if (!driven.Contains(id) && _byId.TryGetValue(id, out ctl) && ctl.Control != null)
+                {
                     ctl.Control.SetDefault();
+                    _released[id] = now;
+                }
             }
             _driven = driven;
             _snap = snap;
+            RecordDefaults(now);
+        }
+
+        // Mientras una salida no la controla ninguna regla (manda la placa), registra
+        // cuanto gira segun la fuente de temperatura de cada regla que la menciona.
+        void RecordDefaults(DateTime now)
+        {
+            var seen = new HashSet<string>();
+            foreach (var rule in _cfg.Rules)
+            {
+                if (string.IsNullOrEmpty(rule.ControlId) || string.IsNullOrEmpty(rule.TempId)) continue;
+                string key = DefaultCurveStore.Key(rule.ControlId, rule.TempId);
+                if (!seen.Add(key) || _driven.Contains(rule.ControlId)) continue;
+
+                ISensor ctl, tmp;
+                if (!_byId.TryGetValue(rule.ControlId, out ctl) || !_byId.TryGetValue(rule.TempId, out tmp)) continue;
+                if (ctl.Control == null || ctl.Control.ControlMode == ControlMode.Software) continue;
+                DateTime rel;
+                if (_released.TryGetValue(rule.ControlId, out rel) && (now - rel).TotalSeconds < 8) continue; // dejar que la placa retome
+                if (!ctl.Value.HasValue || !tmp.Value.HasValue) continue;
+
+                _defaults.Add(key, tmp.Value.Value, ctl.Value.Value);
+                _defaultsDirty = true;
+            }
+            if (_defaultsDirty && (now - _lastDefaultsSave).TotalSeconds >= 30) SaveDefaults(now);
+        }
+
+        void SaveDefaults(DateTime now)
+        {
+            try { _defaults.Save(); _defaultsDirty = false; } catch { }
+            _lastDefaultsSave = now;
+        }
+
+        // Curva por defecto aprendida para (salida, fuente); vacia si todavia no hay datos suficientes.
+        public List<CurvePoint> GetDefaultCurve(string controlId, string tempId)
+        {
+            lock (_lock) return _defaults.Get(DefaultCurveStore.Key(controlId, tempId), 3);
         }
 
         static double Apply(ISensor ctl, double pct)
@@ -228,6 +272,7 @@ namespace FanCurve
                     ISensor ctl;
                     try { if (_byId.TryGetValue(id, out ctl) && ctl.Control != null) ctl.Control.SetDefault(); } catch { }
                 }
+                if (_defaultsDirty) SaveDefaults(DateTime.UtcNow);
                 try { _pc.Close(); } catch { }
             }
         }
