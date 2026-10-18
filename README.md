@@ -13,6 +13,8 @@ One job: map a temperature sensor to a fan speed, run quietly in the tray, start
 
 </div>
 
+🇪🇸 [Leer en español](#espanol)
+
 ---
 
 ## Why?
@@ -127,3 +129,130 @@ Controlling fans manually can cause **overheating and hardware damage** if confi
 ## License
 
 [MIT](LICENSE) © FanCurve contributors. Third-party components keep their own licenses (LibreHardwareMonitorLib: MPL-2.0).
+
+---
+
+<a id="espanol"></a>
+
+<div align="center">
+
+# FanCurve (Español)
+
+**Un controlador de curvas de ventiladores para Windows, mínimo y sin vueltas.**<br>
+Hace una sola cosa: relacionar una temperatura con una velocidad de ventilador, correr en la bandeja del sistema e iniciar con Windows.
+
+</div>
+
+## ¿Por qué?
+
+Las suites de control de ventiladores de los fabricantes suelen pesar cientos de megabytes, traen decenas de funciones que nunca usás y se actualizan constantemente.
+FanCurve hace **solo** curvas de ventiladores:
+
+- **~1 MB** en una carpeta portable. Sin instalador y sin runtime que instalar (usa el .NET Framework 4.8 que ya trae Windows).
+- **Cualquier fuente de temperatura para cualquier salida de ventilador.** Controlá un ventilador de gabinete con el *hot spot* de la GPU, el cooler del CPU con la temperatura del paquete del CPU, o la combinación que quieras.
+- **Corre en segundo plano** desde el inicio de sesión, oculto en la bandeja del sistema.
+- **Compilación reproducible en Docker.** No necesitás instalar compiladores, SDKs ni lenguajes en tu PC.
+
+## Características
+
+| | |
+|---|---|
+| **Editor visual de curvas** | Arrastrá los puntos, doble clic para agregar uno, clic derecho para quitarlo. Un marcador en vivo muestra la temperatura actual y la velocidad resultante. |
+| **Asignación flexible** | Elegí cualquier sensor de temperatura detectado (CPU, núcleo de GPU, hot spot de GPU, placa madre, discos…) para cualquier salida de ventilador controlable. |
+| **Varias reglas guardadas** | Guardá curvas alternativas para el mismo ventilador. Solo una regla por salida puede estar activa a la vez: FanCurve te avisa y desactiva la otra. |
+| **Controles de seguridad** | Advierte antes de aplicar una curva que deje un ventilador por debajo del 30% con más de 70 °C. Pasa al 100% si el sensor deja de informar. Devuelve el control a la placa madre al salir. |
+| **Comportamiento suave** | Reacciona al instante cuando sube la temperatura y baja la velocidad de forma gradual, para que los ventiladores no suban y bajen constantemente. |
+| **Explorador de sensores** | Mirá todas las temperaturas, RPM y canales de control, y probá un canal al 100% para saber qué ventilador físico maneja. |
+| **Inicio automático** | Una casilla crea una tarea programada con privilegios elevados (sin aviso de UAC en cada inicio de sesión). |
+
+## Inicio rápido
+
+1. Instalá una sola vez el driver [PawnIO](https://pawnio.eu/) (lo requiere la capa de hardware):
+   ```powershell
+   winget install namazso.PawnIO
+   ```
+2. Descargá o [compilá](#compilar-desde-el-código-fuente) `FanCurve-<versión>-win-x64.zip`, extraelo donde quieras y ejecutá `FanCurve.exe` (pide permisos de administrador).
+3. En la pestaña **Sensores**, seleccioná una fila *Control* y presioná **Probar salida al 100%** para ver qué ventilador reacciona.
+4. En la pestaña **Reglas**, presioná **Agregar regla**, elegí la salida del ventilador y la fuente de temperatura, y dale forma a la curva.
+5. Presioná **Guardar y aplicar**, y marcá **Iniciar con Windows** si querés que se ejecute en cada inicio de sesión.
+
+> **Ojo:** cerrá o desinstalá otros controladores de ventiladores (Armoury Crate, iCUE, MSI Center, FanControl, …) mientras uses FanCurve. Dos programas escribiendo en el mismo ventilador se pelean entre sí.
+
+## Cómo funciona
+
+```
+ ┌────────────────┐   temperatura   ┌──────────────┐  objetivo %  ┌─────────────────────┐
+ │ Sensor (CPU,   │ ───────────────▶│   Curva de   │─────────────▶│ Canal de control    │
+ │ hot spot GPU…) │   suavizado     │ ventilador   │              │ (Super I/O, GPU…)   │
+ └────────────────┘                 │ (interpola-  │              └─────────────────────┘
+                                    │  ción lineal)│
+                                    └──────────────┘
+```
+
+FanCurve lee los sensores y escribe las velocidades mediante [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), la misma capa de hardware que usa LibreHardwareMonitor.
+Una vez por segundo (configurable), cada regla activa evalúa su curva y aplica el resultado a su salida. Las salidas que dejan de estar controladas vuelven al control automático de la placa madre.
+
+## Compilar desde el código fuente
+
+El único requisito es **Docker** (con Compose). No se instala nada más en tu PC.
+
+```powershell
+docker compose run --rm build
+```
+
+El resultado queda en `dist/`:
+
+```
+dist/
+├── FanCurve.exe
+├── LibreHardwareMonitorLib.dll
+├── …(dependencias)
+└── FanCurve-<versión>-win-x64.zip   # mismo contenido, listo para compartir
+```
+
+La compilación ejecuta `dotnet publish` dentro de la imagen oficial del SDK de .NET, compilando de forma cruzada un ejecutable `net48` de Windows desde Linux.
+
+## Versiones y lanzamientos
+
+FanCurve sigue el [Versionado Semántico](https://semver.org/lang/es/): `MAJOR.MINOR.PATCH`.
+
+- **PATCH**: corrección de errores. **MINOR**: funciones nuevas compatibles hacia atrás. **MAJOR**: cambios incompatibles (por ejemplo, el formato del archivo de configuración).
+- Las versiones preliminares llevan un sufijo: `v1.2.0-rc.1`, `v2.0.0-beta.1`. Se publican como *pre-release* en GitHub.
+
+Para publicar una versión, creá un tag sobre un commit de `main` y subilo:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+El [workflow de Release](.github/workflows/release.yml) compila el proyecto en Docker, incrusta la versión en el ejecutable y adjunta `FanCurve-<versión>-win-x64.zip` y `SHA256SUMS.txt` a un nuevo Release de GitHub con notas generadas automáticamente.
+Cada push a `main` y cada pull request también se compilan con el [workflow de CI](.github/workflows/ci.yml).
+
+## Configuración
+
+Las reglas se guardan en `%APPDATA%\FanCurve\config.json` y se editan desde la interfaz. Opciones avanzadas:
+
+| Clave | Valor por defecto | Descripción |
+|---|---|---|
+| `IntervalMs` | `1000` | Cada cuánto se leen los sensores y se actualizan los ventiladores (mínimo 250). |
+| `FailsafePercent` | `100` | Velocidad usada si el sensor de temperatura de una regla deja de informar. |
+
+## Limitaciones
+
+- El **control** de ventiladores depende de que tu hardware sea compatible con LibreHardwareMonitor (la mayoría de los chips Super I/O Nuvoton/ITE y muchas GPUs). Si en la pestaña Sensores no aparece ningún canal *Control*, FanCurve no puede manejar tus ventiladores.
+- Si el proceso se cierra a la fuerza (por ejemplo, *Finalizar tarea*), los ventiladores quedan en la última velocidad escrita hasta que FanCurve vuelva a iniciarse o se reinicie la PC. Un cierre normal restaura el control automático.
+- Por ahora la interfaz está en español.
+
+## Seguridad
+
+Controlar ventiladores manualmente puede causar **sobrecalentamiento y daños en el hardware** si se configura mal. FanCurve advierte sobre curvas riesgosas, pero no puede saber qué ventilador está conectado a cada conector. Revisá tus curvas, monitoreá las temperaturas después de cambiarlas y usalo bajo tu propia responsabilidad. Ver la [licencia](LICENSE).
+
+## Agradecimientos
+
+- [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) por la capa de sensores y control de ventiladores.
+- [PawnIO](https://pawnio.eu/) por el driver firmado de bajo nivel.
+
+## Licencia
+
+[MIT](LICENSE) © FanCurve contributors. Los componentes de terceros conservan sus propias licencias (LibreHardwareMonitorLib: MPL-2.0).
