@@ -57,6 +57,8 @@ namespace FanCurve
         DateTime _lastUpdate = DateTime.MinValue;
         readonly DefaultCurveStore _defaults = DefaultCurveStore.Load();
         readonly Dictionary<string, DateTime> _released = new Dictionary<string, DateTime>();
+        readonly Dictionary<string, double> _lastSpeed = new Dictionary<string, double>();
+        readonly Dictionary<string, int> _stableTicks = new Dictionary<string, int>();
         bool _defaultsDirty;
         DateTime _lastDefaultsSave = DateTime.UtcNow;
 
@@ -206,6 +208,25 @@ namespace FanCurve
         // cuanto gira segun la fuente de temperatura de cada regla que la menciona.
         void RecordDefaults(DateTime now)
         {
+            // Solo se registra con la velocidad "asentada" (sin cambios en varias lecturas seguidas):
+            // asi no se anotan los valores intermedios mientras el ventilador acelera o frena.
+            var ctlSeen = new HashSet<string>();
+            foreach (var rule in _cfg.Rules)
+            {
+                if (string.IsNullOrEmpty(rule.ControlId) || !ctlSeen.Add(rule.ControlId)) continue;
+                ISensor c;
+                double last;
+                if (_byId.TryGetValue(rule.ControlId, out c) && c.Value.HasValue)
+                {
+                    double v = c.Value.Value;
+                    int n;
+                    _stableTicks.TryGetValue(rule.ControlId, out n);
+                    _stableTicks[rule.ControlId] = (_lastSpeed.TryGetValue(rule.ControlId, out last) && Math.Abs(v - last) <= 1) ? n + 1 : 0;
+                    _lastSpeed[rule.ControlId] = v;
+                }
+                else _stableTicks[rule.ControlId] = 0;
+            }
+
             var seen = new HashSet<string>();
             foreach (var rule in _cfg.Rules)
             {
@@ -219,6 +240,8 @@ namespace FanCurve
                 DateTime rel;
                 if (_released.TryGetValue(rule.ControlId, out rel) && (now - rel).TotalSeconds < 8) continue; // dejar que la placa retome
                 if (!ctl.Value.HasValue || !tmp.Value.HasValue) continue;
+                int stable;
+                if (!_stableTicks.TryGetValue(rule.ControlId, out stable) || stable < 3) continue;
 
                 _defaults.Add(key, tmp.Value.Value, ctl.Value.Value);
                 _defaultsDirty = true;

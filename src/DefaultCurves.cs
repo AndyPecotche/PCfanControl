@@ -9,15 +9,15 @@ namespace FanCurve
     public class SpeedBin
     {
         public int T { get; set; }      // temperatura (°C, redondeada)
-        public double P { get; set; }   // velocidad media observada (%)
-        public int N { get; set; }      // muestras acumuladas (tope para que siga adaptandose)
+        public double P { get; set; }   // ultima velocidad estable observada (%)
+        public int N { get; set; }      // veces que se registro este punto
     }
 
     // Registro de la curva "de fabrica": cuanto gira una salida segun una fuente de temperatura
     // mientras NINGUNA regla de FanCurve la controla (es decir, manda la placa).
     public class DefaultCurveStore
     {
-        const int MaxSamplesPerBin = 200;
+        const int MaxCount = 100000;
 
         public Dictionary<string, List<SpeedBin>> Pairs { get; set; } = new Dictionary<string, List<SpeedBin>>();
 
@@ -54,9 +54,9 @@ namespace FanCurve
             if (!Pairs.TryGetValue(key, out bins)) Pairs[key] = bins = new List<SpeedBin>();
             int t = (int)Math.Round(temp);
             var bin = bins.FirstOrDefault(b => b.T == t);
-            if (bin == null) { bin = new SpeedBin { T = t, P = percent, N = 0 }; bins.Add(bin); }
-            bin.N = Math.Min(bin.N + 1, MaxSamplesPerBin);
-            bin.P += (percent - bin.P) / bin.N; // media incremental
+            if (bin == null) { bin = new SpeedBin { T = t, N = 0 }; bins.Add(bin); }
+            bin.N = Math.Min(bin.N + 1, MaxCount);
+            bin.P = percent; // sin promediar: si el firmware cambia, el valor nuevo reemplaza al anterior de inmediato
         }
 
         public List<CurvePoint> Get(string key, int minSamples)
