@@ -70,6 +70,18 @@ Several times per second (you choose the sampling rate) each active rule evaluat
 Close FanCurve (tray icon → **Exit**), replace the files with the ones from the new zip and start it again. Your rules and settings are kept (see [Configuration](#configuration)).
 Releases marked *Pre-release* on the Releases page are test versions.
 
+## Building from source
+
+Want to build the executable yourself? The only requirement is **Docker** with Compose; nothing else gets installed on your PC.
+
+```powershell
+git clone https://github.com/AndyPecotche/PCfanControl.git
+cd PCfanControl
+docker compose run --rm build
+```
+
+The ready-to-run files and a portable `.zip` end up in the `dist/` folder.
+
 ## Configuration
 
 Everything is edited from the UI. Your data lives in `%APPDATA%\FanCurve\` (usually `C:\Users\<you>\AppData\Roaming\FanCurve\`), **not** next to the executable, so it survives updating or moving the portable folder.
@@ -174,6 +186,18 @@ Varias veces por segundo (vos elegís la frecuencia de muestreo), cada regla act
 
 Cerrá FanCurve (ícono de la bandeja → **Salir**), reemplazá los archivos por los del zip nuevo y volvé a iniciarlo. Tus reglas y ajustes se conservan (ver [Configuración](#configuración)).
 Los Releases marcados como *Pre-release* en la página de Releases son versiones de prueba.
+
+## Compilar desde el código fuente
+
+¿Querés compilar el ejecutable vos mismo? El único requisito es **Docker** con Compose; no se instala nada más en tu PC.
+
+```powershell
+git clone https://github.com/AndyPecotche/PCfanControl.git
+cd PCfanControl
+docker compose run --rm build
+```
+
+Los archivos listos para ejecutar y un `.zip` portable quedan en la carpeta `dist/`.
 
 ## Configuración
 
