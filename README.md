@@ -35,6 +35,7 @@ FanCurve does **only** fan curves:
 | **Flexible mapping** | Pick any detected temperature sensor (CPU, GPU core, GPU hot spot, motherboard, drives…) for any controllable fan output. |
 | **Multiple saved rules** | Keep alternative curves for the same fan. Only one rule per output can be active at a time; FanCurve warns you and switches the other one off. |
 | **Safety checks** | Warns before applying a curve that runs a fan below 30% above 70 °C. Falls back to 100% if the sensor stops reporting. Restores motherboard control on exit. |
+| **Selectable sampling rate** | Choose how often temperatures are read (0.25 s to 5 s) from the UI. |
 | **Selectable reaction time** | Per rule, choose how fast the fan follows the temperature when it rises and when it falls: Immediate, 0.5 s, 1 s or 2 s. Slower values stop fans from hunting up and down. |
 | **Sensor browser** | See every temperature, RPM and control channel, and test a channel at 100% to find out which physical fan it drives. |
 | **Autostart** | One checkbox creates an elevated scheduled task (no UAC prompt at every logon). |
@@ -104,11 +105,10 @@ Every push to `main` and every pull request is also built by the [CI workflow](.
 
 ## Configuration
 
-Rules are stored in `%APPDATA%\FanCurve\config.json` and edited from the UI. Advanced options:
+Rules and settings (including the sampling rate and language) are stored in `%APPDATA%\FanCurve\config.json` and edited from the UI. The only advanced option is:
 
 | Key | Default | Description |
 |---|---|---|
-| `IntervalMs` | `500` | How often sensors are read and fans updated (250–500; higher values are capped so reaction times stay accurate). |
 | `FailsafePercent` | `100` | Fan speed used if a rule's temperature sensor stops reporting. |
 
 ## Limitations
@@ -161,6 +161,7 @@ FanCurve hace **solo** curvas de ventiladores:
 | **Asignación flexible** | Elegí cualquier sensor de temperatura detectado (CPU, núcleo de GPU, hot spot de GPU, placa madre, discos…) para cualquier salida de ventilador controlable. |
 | **Varias reglas guardadas** | Guardá curvas alternativas para el mismo ventilador. Solo una regla por salida puede estar activa a la vez: FanCurve te avisa y desactiva la otra. |
 | **Controles de seguridad** | Advierte antes de aplicar una curva que deje un ventilador por debajo del 30% con más de 70 °C. Pasa al 100% si el sensor deja de informar. Devuelve el control a la placa madre al salir. |
+| **Frecuencia de muestreo seleccionable** | Elegí cada cuánto se leen las temperaturas (de 0,25 s a 5 s) desde la interfaz. |
 | **Tiempo de reacción seleccionable** | Por regla, elegí qué tan rápido sigue el ventilador a la temperatura cuando sube y cuando baja: Inmediato, 0,5 s, 1 s o 2 s. Valores más lentos evitan que los ventiladores suban y bajen constantemente. |
 | **Explorador de sensores** | Mirá todas las temperaturas, RPM y canales de control, y probá un canal al 100% para saber qué ventilador físico maneja. |
 | **Inicio automático** | Una casilla crea una tarea programada con privilegios elevados (sin aviso de UAC en cada inicio de sesión). |
@@ -231,11 +232,10 @@ Cada push a `main` y cada pull request también se compilan con el [workflow de 
 
 ## Configuración
 
-Las reglas se guardan en `%APPDATA%\FanCurve\config.json` y se editan desde la interfaz. Opciones avanzadas:
+Las reglas y los ajustes (incluidos la frecuencia de muestreo y el idioma) se guardan en `%APPDATA%\FanCurve\config.json` y se editan desde la interfaz. La única opción avanzada es:
 
 | Clave | Valor por defecto | Descripción |
 |---|---|---|
-| `IntervalMs` | `500` | Cada cuánto se leen los sensores y se actualizan los ventiladores (250–500; los valores mayores se limitan para que los tiempos de reacción sean precisos). |
 | `FailsafePercent` | `100` | Velocidad usada si el sensor de temperatura de una regla deja de informar. |
 
 ## Limitaciones

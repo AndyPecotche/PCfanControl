@@ -44,7 +44,7 @@ namespace FanCurve
     public class FanService : IDisposable
     {
         readonly Computer _pc;
-        const int MaxIntervalMs = 500; // tope: asi los tiempos de reaccion de 0,5 s son reales
+        const int MaxIntervalMs = 500; // intervalo inicial hasta leer la configuracion
         readonly object _lock = new object();
         readonly Dictionary<string, ISensor> _byId = new Dictionary<string, ISensor>();
         readonly Dictionary<string, double> _smooth = new Dictionary<string, double>();
@@ -101,7 +101,7 @@ namespace FanCurve
                 lock (_lock)
                 {
                     if (_disposed) return;
-                    next = Math.Max(250, Math.Min(MaxIntervalMs, _cfg.IntervalMs));
+                    next = Math.Max(250, _cfg.IntervalMs);
                     Update();
                 }
             }

@@ -25,6 +25,8 @@ namespace FanCurve
         CheckBox _enabled, _autostart;
         ComboBox _ctl, _temp, _rise, _fall;
         static readonly double[] ReactValues = { 0, 0.5, 1, 2 };
+        static readonly double[] SampleValues = { 250, 500, 1000, 2000, 5000 };
+        static readonly string[] SampleKeys = { "sample.250", "sample.500", "sample.1000", "sample.2000", "sample.5000" };
         static readonly string[] ReactKeys = { "react.0", "react.0.5", "react.1", "react.2" };
         CurveControl _curve;
         Label _status;
@@ -93,13 +95,28 @@ namespace FanCurve
             langBox.SelectedIndex = Array.IndexOf(L.Languages, L.Lang);
             langBox.SelectedIndexChanged += (s, e) => { var l = L.Languages[langBox.SelectedIndex]; BeginInvoke((Action)(() => ChangeLanguage(l))); };
             var langLabel = new Label { Text = L.T("lbl.language"), Dock = DockStyle.Left, Width = 62, TextAlign = ContentAlignment.MiddleRight };
-            var langPanel = new Panel { Dock = DockStyle.Right, Width = 230, Padding = new Padding(0, 0, 14, 0) };
+            var langPanel = new Panel { Dock = DockStyle.Right, Width = 240, Padding = new Padding(0, 0, 0, 0) };
             langPanel.Controls.Add(langBox);
             langPanel.Controls.Add(langLabel);
-            bottom.Controls.Add(langPanel);
+
+            // frecuencia de muestreo (global)
+            var sampBox = new ComboBox { Dock = DockStyle.Left, Width = 110, DropDownStyle = ComboBoxStyle.DropDownList };
+            foreach (var k in SampleKeys) sampBox.Items.Add(L.T(k));
+            sampBox.SelectedIndex = NearestIndex(SampleValues, _cfg.IntervalMs);
+            sampBox.SelectedIndexChanged += (s, e) => { if (sampBox.SelectedIndex >= 0) _cfg.IntervalMs = (int)SampleValues[sampBox.SelectedIndex]; };
+            var sampLabel = new Label { Text = L.T("lbl.sampling"), Dock = DockStyle.Left, Width = 150, TextAlign = ContentAlignment.MiddleLeft };
+            var sampPanel = new Panel { Dock = DockStyle.Fill };
+            sampPanel.Controls.Add(sampBox);
+            sampPanel.Controls.Add(sampLabel);
+
+            var strip = new Panel { Dock = DockStyle.Bottom, Height = 34, Padding = new Padding(10, 4, 10, 2) };
+            strip.Controls.Add(sampPanel);
+            strip.Controls.Add(langPanel);
+
             bottom.Controls.Add(save);
             bottom.Controls.Add(_autostart);
             Controls.Add(tabs);
+            Controls.Add(strip);
             Controls.Add(bottom);
 
             // --- pestaña reglas: izquierda (lista) ---
@@ -196,13 +213,15 @@ namespace FanCurve
             return cb;
         }
 
-        static int NearestReact(double v)
+        static int NearestIndex(double[] values, double v)
         {
             int best = 0;
-            for (int i = 1; i < ReactValues.Length; i++)
-                if (Math.Abs(ReactValues[i] - v) < Math.Abs(ReactValues[best] - v)) best = i;
+            for (int i = 1; i < values.Length; i++)
+                if (Math.Abs(values[i] - v) < Math.Abs(values[best] - v)) best = i;
             return best;
         }
+
+        static int NearestReact(double v) { return NearestIndex(ReactValues, v); }
 
         string SelectedControlId()
         {
