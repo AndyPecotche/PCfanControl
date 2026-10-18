@@ -9,7 +9,8 @@ namespace FanCurve
     public class SpeedBin
     {
         public int T { get; set; }      // temperatura (°C, redondeada)
-        public double P { get; set; }   // ultima velocidad estable observada (%)
+        public double P { get; set; }   // ultimo duty estable observado (%)
+        public double R { get; set; }   // ultimas RPM reales observadas (0 = sin dato)
         public int N { get; set; }      // veces que se registro este punto
     }
 
@@ -48,7 +49,7 @@ namespace FanCurve
             File.WriteAllText(FilePath, new JavaScriptSerializer().Serialize(this));
         }
 
-        public void Add(string key, double temp, double percent)
+        public void Add(string key, double temp, double percent, double rpm)
         {
             List<SpeedBin> bins;
             if (!Pairs.TryGetValue(key, out bins)) Pairs[key] = bins = new List<SpeedBin>();
@@ -56,15 +57,15 @@ namespace FanCurve
             var bin = bins.FirstOrDefault(b => b.T == t);
             if (bin == null) { bin = new SpeedBin { T = t, N = 0 }; bins.Add(bin); }
             bin.N = Math.Min(bin.N + 1, MaxCount);
+            bin.R = rpm;
             bin.P = percent; // sin promediar: si el firmware cambia, el valor nuevo reemplaza al anterior de inmediato
         }
 
-        public List<CurvePoint> Get(string key, int minSamples)
+        public List<SpeedBin> Get(string key, int minSamples)
         {
             List<SpeedBin> bins;
-            if (!Pairs.TryGetValue(key, out bins)) return new List<CurvePoint>();
-            return bins.Where(b => b.N >= minSamples).OrderBy(b => b.T)
-                       .Select(b => new CurvePoint { Temp = b.T, Percent = b.P }).ToList();
+            if (!Pairs.TryGetValue(key, out bins)) return new List<SpeedBin>();
+            return bins.Where(b => b.N >= minSamples).OrderBy(b => b.T).ToList();
         }
     }
 }

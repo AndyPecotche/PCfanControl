@@ -24,6 +24,8 @@ namespace FanCurve
         TextBox _name;
         CheckBox _enabled, _autostart, _showDefault;
         ComboBox _ctl, _temp, _rise, _fall;
+        Button _calBtn, _calBtn2;
+        ToolTip _toolTip = new ToolTip();
         static readonly double[] ReactValues = { 0, 0.5, 1, 2 };
         static readonly double[] SampleValues = { 250, 500, 1000, 2000, 5000 };
         static readonly string[] SampleKeys = { "sample.250", "sample.500", "sample.1000", "sample.2000", "sample.5000" };
@@ -153,7 +155,12 @@ namespace FanCurve
                 form.Controls.Add(ctrl);
             };
             row(L.T("lbl.name"), _name);
-            row(L.T("lbl.output"), _ctl);
+            _calBtn = new Button { Text = L.T("btn.calibrate"), Dock = DockStyle.Right, Width = 120 };
+            _calBtn.Click += (s, e) => { if (Current != null && !string.IsNullOrEmpty(Current.ControlId)) Calibrate(Current.ControlId); };
+            var ctlPanel = new Panel { Dock = DockStyle.Fill, Height = 27 };
+            ctlPanel.Controls.Add(_ctl);
+            ctlPanel.Controls.Add(_calBtn);
+            row(L.T("lbl.output"), ctlPanel);
             row(L.T("lbl.tempsource"), _temp);
             _rise = MakeReactCombo(v => { if (Current != null) Current.RiseSeconds = v; });
             _fall = MakeReactCombo(v => { if (Current != null) Current.FallSeconds = v; });
@@ -201,7 +208,10 @@ namespace FanCurve
             var tip = new Label { Text = L.T("lbl.sensortip"), AutoSize = true, Padding = new Padding(8, 6, 0, 0), ForeColor = SystemColors.GrayText };
             test.Click += (s, e) => { var id = SelectedControlId(); if (id != null) _svc.TestControl(id, 8); };
             stop.Click += (s, e) => { var id = SelectedControlId(); if (id != null) _svc.CancelTest(id); };
-            bar.Controls.AddRange(new Control[] { test, stop, tip });
+            _calBtn2 = new Button { Text = L.T("btn.calibrate"), AutoSize = true, Enabled = false };
+            _calBtn2.Click += (s, e) => { var id = SelectedControlId(); if (id != null) Calibrate(id); };
+            _sensors.SelectedIndexChanged += (s, e) => UpdateCalButtons();
+            bar.Controls.AddRange(new Control[] { test, stop, _calBtn2, tip });
             tabSensors.Controls.Add(_sensors);
             tabSensors.Controls.Add(bar);
 
@@ -231,6 +241,36 @@ namespace FanCurve
         }
 
         static int NearestReact(double v) { return NearestIndex(ReactValues, v); }
+
+        // ---------- calibracion ----------
+
+        void Calibrate(string controlId)
+        {
+            string name = ControlName(controlId);
+            if (name == controlId)
+            {
+                var si = _svc.GetSnapshot().Sensors.FirstOrDefault(x => x.Id == controlId);
+                if (si != null) name = si.FullName;
+            }
+            CalibrationUi.Run(this, Font, _svc, controlId, name);
+            UpdateCalButtons();
+        }
+
+        void UpdateCalButtons()
+        {
+            if (_calBtn == null) return;
+            var r = Current;
+            SetCalButton(_calBtn, r != null ? r.ControlId : null);
+            SetCalButton(_calBtn2, SelectedControlId());
+        }
+
+        void SetCalButton(Button b, string controlId)
+        {
+            var cal = string.IsNullOrEmpty(controlId) ? null : _svc.GetCalibration(controlId);
+            b.Enabled = !string.IsNullOrEmpty(controlId);
+            b.Text = L.T(cal != null ? "btn.recalibrate" : "btn.calibrate");
+            _toolTip.SetToolTip(b, cal != null ? L.F("tip.calibrated", cal.Date) : "");
+        }
 
         string SelectedControlId()
         {
@@ -347,7 +387,7 @@ namespace FanCurve
                 _ctl.Items.Clear(); _temp.Items.Clear();
                 _curve.Points = new List<CurvePoint>();
             }
-            _curve.CurrentTemp = null; _curve.CurrentPercent = null; _curve.OutputPercent = null;
+            _curve.CurrentTemp = null; _curve.CurrentPercent = null; _curve.OutputPercent = null; _curve.RpmForPercent = null; _curve.FloorPercent = 0;
             _curve.Invalidate();
             _status.Text = "";
             _loading = false;
@@ -530,23 +570,38 @@ namespace FanCurve
                 SensorInfo outSensor = snap.Sensors.FirstOrDefault(x => x.Id == r.ControlId);
                 _curve.CurrentTemp = tempSensor != null ? tempSensor.Value : null;
 
+                // Velocidad REAL: RPM del tacometro (el % que se pide puede no coincidir, p. ej. por el piso del ventilador).
+                var cal = _svc.GetCalibration(r.ControlId);
+                SensorInfo fan = snap.Sensors.FirstOrDefault(x => x.Id == _svc.GetFanId(r.ControlId));
+                double? rpm = fan != null ? fan.Value : null;
+                double? realPct = (cal != null && rpm.HasValue) ? cal.EquivalentPercent(rpm.Value) : (double?)null;
+                string realText = "";
+                if (rpm.HasValue)
+                    realText = cal != null ? L.F("status.real", rpm.Value, realPct.Value) : L.F("status.realnocal", rpm.Value);
+
+                _curve.RpmForPercent = cal != null ? (Func<double, double>)(p => cal.RpmAt(p)) : null;
+                _curve.FloorPercent = cal != null && cal.FloorPercent() >= 5 ? cal.FloorPercent() : 0;
+
                 string text = "";
                 RuleStatus st;
                 if (snap.Rules.TryGetValue(r.Id, out st))
                 {
-                    // Regla aplicada: el punto cae sobre la curva.
-                    _curve.CurrentPercent = st.Percent;
+                    // Regla aplicada: el punto marca donde esta REALMENTE el ventilador sobre la curva.
+                    _curve.CurrentPercent = realPct ?? st.Percent;
                     _curve.OutputPercent = null;
                     if (st.Message != null) text = st.Message;
                     else if (st.Temp.HasValue && st.Percent.HasValue) text = L.F("status.now", st.Temp, st.Percent);
+                    if (realText.Length > 0) text += (text.Length > 0 ? "  ·  " : "") + realText;
                 }
                 else
                 {
-                    // Regla no aplicada: linea horizontal con el % real que tiene hoy la salida.
+                    // Regla no aplicada: linea horizontal con la velocidad real que tiene hoy la salida.
                     _curve.CurrentPercent = null;
-                    _curve.OutputPercent = outSensor != null ? outSensor.Value : null;
+                    _curve.OutputPercent = realPct ?? (outSensor != null ? outSensor.Value : (float?)null);
                     text = L.T("status.notapplied");
+                    if (realText.Length > 0) text += "  ·  " + realText;
                 }
+                if (cal != null && _curve.FloorPercent > 0) text += "  ·  " + L.F("status.floor", _curve.FloorPercent);
                 // curva por defecto de la placa para esta salida + fuente (si esta tildado)
                 List<CurvePoint> def = null;
                 if (_showDefault.Checked && !string.IsNullOrEmpty(r.ControlId) && !string.IsNullOrEmpty(r.TempId))
@@ -559,6 +614,8 @@ namespace FanCurve
                 _status.Text = text;
                 _curve.Invalidate();
             }
+
+            UpdateCalButtons();
 
             _sensors.BeginUpdate();
             var existing = _sensors.Items.Cast<ListViewItem>().ToDictionary(i => i.SubItems[4].Text);

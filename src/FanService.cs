@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using LibreHardwareMonitor.Hardware;
 
@@ -13,6 +14,7 @@ namespace FanCurve
         public SensorType Type;
         public float? Value;
         public string Mode;
+        public HardwareType HwType;
         public string FullName => Hardware + " / " + Name;
     }
 
@@ -61,6 +63,21 @@ namespace FanCurve
         readonly Dictionary<string, int> _stableTicks = new Dictionary<string, int>();
         bool _defaultsDirty;
         DateTime _lastDefaultsSave = DateTime.UtcNow;
+        readonly CalibrationStore _calibs = CalibrationStore.Load();
+        CalibRun _calib;
+        CalibStatus _calibStatus = new CalibStatus();
+
+        class CalibRun
+        {
+            public string ControlId;
+            public bool Precise;
+            public double[] Duties;
+            public int Idx;
+            public DateTime StepStart;
+            public bool Cancel;
+            public List<ISensor> Fans = new List<ISensor>();
+            public Dictionary<string, List<double>> Rpms = new Dictionary<string, List<double>>();
+        }
 
         public FanService(AppConfig cfg)
         {
@@ -107,7 +124,7 @@ namespace FanCurve
                 lock (_lock)
                 {
                     if (_disposed) return;
-                    next = Math.Max(250, _cfg.IntervalMs);
+                    next = _calib != null ? 250 : Math.Max(250, _cfg.IntervalMs); // durante la calibracion se lee rapido
                     Update();
                 }
             }
@@ -137,6 +154,12 @@ namespace FanCurve
                 if (!rule.Enabled) continue;
                 var st = new RuleStatus();
                 snap.Rules[rule.Id] = st;
+
+                if (_calib != null && rule.ControlId == _calib.ControlId)
+                {
+                    st.Message = L.T("svc.calibrating");
+                    continue;
+                }
 
                 ISensor ctl;
                 if (string.IsNullOrEmpty(rule.ControlId) || !_byId.TryGetValue(rule.ControlId, out ctl) || ctl.Control == null)
@@ -180,6 +203,7 @@ namespace FanCurve
             foreach (var kv in _tests)
             {
                 if (kv.Value < DateTime.UtcNow) { expired.Add(kv.Key); continue; }
+                if (_calib != null && kv.Key == _calib.ControlId) continue;
                 ISensor ctl;
                 if (_byId.TryGetValue(kv.Key, out ctl) && ctl.Control != null)
                 {
@@ -188,6 +212,8 @@ namespace FanCurve
                 }
             }
             foreach (var k in expired) _tests.Remove(k);
+
+            AdvanceCalibration(now, snap, driven);
 
             // Lo que antes controlabamos y ya no: devolver al control automatico de la placa.
             foreach (var id in _driven)
@@ -243,7 +269,10 @@ namespace FanCurve
                 int stable;
                 if (!_stableTicks.TryGetValue(rule.ControlId, out stable) || stable < 3) continue;
 
-                _defaults.Add(key, tmp.Value.Value, ctl.Value.Value);
+                ISensor fan;
+                double rpm = 0;
+                if (_byId.TryGetValue(FanIdFor(rule.ControlId), out fan) && fan.Value.HasValue) rpm = fan.Value.Value;
+                _defaults.Add(key, tmp.Value.Value, ctl.Value.Value, rpm);
                 _defaultsDirty = true;
             }
             if (_defaultsDirty && (now - _lastDefaultsSave).TotalSeconds >= 30) SaveDefaults(now);
@@ -256,9 +285,159 @@ namespace FanCurve
         }
 
         // Curva por defecto aprendida para (salida, fuente); vacia si todavia no hay datos suficientes.
+        // Si la salida esta calibrada, la velocidad se expresa como el % equivalente a las RPM reales.
         public List<CurvePoint> GetDefaultCurve(string controlId, string tempId)
         {
-            lock (_lock) return _defaults.Get(DefaultCurveStore.Key(controlId, tempId), 3);
+            lock (_lock)
+            {
+                Calibration cal;
+                _calibs.Outputs.TryGetValue(controlId, out cal);
+                bool useRpm = cal != null && cal.IsValid();
+                return _defaults.Get(DefaultCurveStore.Key(controlId, tempId), 3)
+                    .Select(b => new CurvePoint { Temp = b.T, Percent = (useRpm && b.R > 0) ? cal.EquivalentPercent(b.R) : b.P }).ToList();
+            }
+        }
+
+        // ---------- calibracion ----------
+
+        public Calibration GetCalibration(string controlId)
+        {
+            lock (_lock)
+            {
+                Calibration cal;
+                return (controlId != null && _calibs.Outputs.TryGetValue(controlId, out cal) && cal.IsValid()) ? cal : null;
+            }
+        }
+
+        // Sensor de RPM asociado a una salida: el detectado en la calibracion o, si no hay, el del mismo numero.
+        public string GetFanId(string controlId) { lock (_lock) return FanIdFor(controlId); }
+
+        string FanIdFor(string controlId)
+        {
+            Calibration cal;
+            if (controlId != null && _calibs.Outputs.TryGetValue(controlId, out cal) && !string.IsNullOrEmpty(cal.FanId)) return cal.FanId;
+            return (controlId ?? "").Replace("/control/", "/fan/");
+        }
+
+        public CalibStatus GetCalibStatus() { lock (_lock) return _calibStatus; }
+
+        public bool StartCalibration(string controlId, bool precise, out string error)
+        {
+            lock (_lock)
+            {
+                error = null;
+                ISensor ctl;
+                if (_calib != null) { error = L.T("calib.err.busy"); return false; }
+                if (!_byId.TryGetValue(controlId, out ctl) || ctl.Control == null) { error = L.T("svc.nooutput"); return false; }
+
+                var run = new CalibRun { ControlId = controlId, Precise = precise, StepStart = DateTime.UtcNow };
+                int n = CalibPlan.StepCount(precise);
+                run.Duties = Enumerable.Range(0, n).Select(i => i * CalibPlan.StepPercent(precise)).ToArray();
+
+                // candidatos a tacometro: sensores de RPM del mismo chip/hardware que la salida
+                string hw = ctl.Hardware.Identifier.ToString();
+                foreach (var s in _byId.Values)
+                    if (s.SensorType == SensorType.Fan && s.Hardware.Identifier.ToString() == hw)
+                    {
+                        run.Fans.Add(s);
+                        run.Rpms[s.Identifier.ToString()] = new List<double>();
+                    }
+                if (run.Fans.Count == 0) { error = L.T("calib.err.nofans"); return false; }
+
+                _calib = run;
+                _calibStatus = new CalibStatus { State = "running", ControlId = controlId };
+                return true;
+            }
+        }
+
+        public void CancelCalibration() { lock (_lock) { if (_calib != null) _calib.Cancel = true; } }
+
+        static bool IsCpuOrGpu(HardwareType t)
+        {
+            return t == HardwareType.Cpu || t == HardwareType.GpuNvidia || t == HardwareType.GpuAmd || t == HardwareType.GpuIntel;
+        }
+
+        void AdvanceCalibration(DateTime now, Snapshot snap, HashSet<string> driven)
+        {
+            var run = _calib;
+            if (run == null) return;
+            ISensor ctl;
+            if (!_byId.TryGetValue(run.ControlId, out ctl) || ctl.Control == null) { FinishCalibration("failed", L.T("svc.nooutput")); return; }
+
+            if (run.Cancel) { FinishCalibration("cancelled", null); return; }
+
+            // corte de seguridad: no seguir si CPU/GPU se calientan
+            const double LimitC = 80;
+            var hot = snap.Sensors.Where(s => s.Type == SensorType.Temperature && s.Value.HasValue && IsCpuOrGpu(s.HwType) && s.Value.Value < 150)
+                                  .OrderByDescending(s => s.Value.Value).FirstOrDefault();
+            if (hot != null && hot.Value.Value >= LimitC)
+            {
+                FinishCalibration("aborted", L.F("calib.err.hot", hot.FullName, hot.Value.Value));
+                return;
+            }
+
+            double duty = run.Duties[run.Idx];
+            Apply(ctl, duty);
+            driven.Add(run.ControlId);
+
+            double wait = CalibPlan.WaitSeconds(run.Precise) + (run.Idx == 0 ? CalibPlan.InitialSettleSeconds : 0);
+            double elapsed = (now - run.StepStart).TotalSeconds;
+
+            string mainFan = FanIdFor(run.ControlId);
+            ISensor shown = run.Fans.FirstOrDefault(f => f.Identifier.ToString() == mainFan) ?? run.Fans[0];
+            _calibStatus = new CalibStatus
+            {
+                State = "running",
+                ControlId = run.ControlId,
+                CurrentDuty = duty,
+                CurrentRpm = shown.Value,
+                Progress = Math.Min(1, (run.Idx + Math.Min(1, elapsed / wait)) / run.Duties.Length),
+            };
+
+            if (elapsed < wait) return;
+
+            foreach (var f in run.Fans) run.Rpms[f.Identifier.ToString()].Add(f.Value ?? 0);
+            run.Idx++;
+            run.StepStart = now;
+            if (run.Idx >= run.Duties.Length) CompleteCalibration(run);
+        }
+
+        void CompleteCalibration(CalibRun run)
+        {
+            // el tacometro de esta salida es el que mas cambia a lo largo del barrido
+            string bestId = null;
+            double bestRange = 0;
+            foreach (var kv in run.Rpms)
+            {
+                double range = kv.Value.Max() - kv.Value.Min();
+                if (range > bestRange) { bestRange = range; bestId = kv.Key; }
+            }
+            if (bestId == null || bestRange < 150)
+            {
+                FinishCalibration("failed", L.T("calib.err.norpm"));
+                return;
+            }
+
+            var cal = new Calibration
+            {
+                FanId = bestId,
+                Date = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                Mode = run.Precise ? "precise" : "fast",
+                Points = run.Duties.Select((d, i) => new CalPoint { Duty = d, Rpm = run.Rpms[bestId][i] }).ToList(),
+            };
+            _calibs.Outputs[run.ControlId] = cal;
+            try { _calibs.Save(); } catch { }
+
+            string tach = _byId.ContainsKey(bestId) ? _byId[bestId].Name : bestId;
+            string msg = L.F("calib.done", tach, cal.MaxRpm(), cal.RpmAt(0), cal.FloorPercent());
+            FinishCalibration("done", msg);
+        }
+
+        void FinishCalibration(string state, string message)
+        {
+            var run = _calib;
+            _calib = null; // la salida deja de estar manejada: el ciclo normal la devuelve a la placa o a su regla
+            _calibStatus = new CalibStatus { State = state, ControlId = run != null ? run.ControlId : null, Progress = state == "done" ? 1 : _calibStatus.Progress, Message = message };
         }
 
         static double Apply(ISensor ctl, double pct)
@@ -278,7 +457,7 @@ namespace FanCurve
                     continue;
                 string id = s.Identifier.ToString();
                 _byId[id] = s;
-                list.Add(new SensorInfo { Id = id, Hardware = h.Name, Name = s.Name, Type = s.SensorType, Value = s.Value, Mode = s.Control != null ? s.Control.ControlMode.ToString() : null });
+                list.Add(new SensorInfo { Id = id, Hardware = h.Name, Name = s.Name, Type = s.SensorType, Value = s.Value, HwType = h.HardwareType, Mode = s.Control != null ? s.Control.ControlMode.ToString() : null });
             }
             foreach (var sub in h.SubHardware) Collect(sub, list);
         }

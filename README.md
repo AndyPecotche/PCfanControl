@@ -33,6 +33,8 @@ FanCurve does **only** fan curves:
 | **Flexible mapping** | Pick any detected temperature sensor (CPU, GPU core, GPU hot spot, motherboard, drives…) for any controllable fan output. |
 | **Multiple saved rules** | Keep alternative curves for the same fan. Only one rule per output can be active at a time; FanCurve warns you and switches the other one off. |
 | **Safety checks** | Warns before applying a curve that runs a fan below 30% above 70 °C. Falls back to 100% if the sensor stops reporting. Restores motherboard control on exit. |
+| **Real speed + RPM scale** | The graph marks the fan's *real* speed (from its RPM sensor), not just the % FanCurve requests, and shows a second axis in RPM on the right. Needs a one-time calibration per output. |
+| **Output calibration** | One button sweeps an output from 0% to 100% and measures the RPM at each level (*Precise*: every 1 %, 4 s per step; *Fast*: every 5 %, 5 s per step; the estimated time is shown before starting, with a progress indicator). It finds the RPM sensor of that output and the minimum speed the fan can really reach. |
 | **Default curve overlay** | While the motherboard (not FanCurve) controls a fan, FanCurve logs its temperature/speed behaviour. Tick *Show default curve* to see it as a thin dotted black line behind your blue custom curve. |
 | **Selectable sampling rate** | Choose how often temperatures are read (0.25 s to 5 s) from the UI. |
 | **Selectable reaction time** | Per rule, choose how fast the fan follows the temperature when it rises and when it falls: Immediate, 0.5 s, 1 s or 2 s. Slower values stop fans from hunting up and down. |
@@ -90,6 +92,7 @@ Everything is edited from the UI. Your data lives in `%APPDATA%\FanCurve\` (usua
 |---|---|
 | `config.json` | Your rules (curves, outputs, sources, reaction times) and settings: language, sampling rate, *Show default curve* preference. Written when you press **Save and apply**; the language and the default-curve checkbox are saved as soon as you change them. |
 | `default-curves.json` | The learned default curve of your motherboard (see *Default curve overlay*). Safe to delete; it is rebuilt over time. |
+| `calibrations.json` | Output calibrations (duty → RPM tables). Delete it to calibrate again from scratch. |
 
 - **Back up / move to another PC:** close FanCurve and copy `config.json` to the same folder on the other machine. Output and sensor IDs depend on your hardware, so rules may need to be re-assigned if the machine differs.
 - **Reset to defaults:** close FanCurve and delete the `FanCurve` folder above.
@@ -103,6 +106,8 @@ The only option meant to be edited by hand in `config.json` is:
 ## Limitations
 
 - Fan **control** depends on your hardware being supported by LibreHardwareMonitor (most Nuvoton/ITE Super I/O chips, many GPUs). If no *Control* channels appear in the Sensors tab, FanCurve can't drive your fans.
+- Calibration drives the output from 0% to 100%: run it with the PC idle. It pauses the rules of that output, stops by itself if a CPU or GPU reaches 80 °C, and should be used with care on AIO pumps and CPU fans.
+- Many fans never go below a minimum speed (e.g. ~20 %) even when asked for 0 %. Calibration detects this and the graph shades that zone.
 - If the process is killed forcefully (e.g. *End task*), fans stay at the last written speed until FanCurve is started again or the PC restarts. A normal exit restores automatic control.
 - The UI is available in English and Spanish (language selector at the bottom of the window; it defaults to your system language).
 
@@ -149,6 +154,8 @@ FanCurve hace **solo** curvas de ventiladores:
 | **Asignación flexible** | Elegí cualquier sensor de temperatura detectado (CPU, núcleo de GPU, hot spot de GPU, placa madre, discos…) para cualquier salida de ventilador controlable. |
 | **Varias reglas guardadas** | Guardá curvas alternativas para el mismo ventilador. Solo una regla por salida puede estar activa a la vez: FanCurve te avisa y desactiva la otra. |
 | **Controles de seguridad** | Advierte antes de aplicar una curva que deje un ventilador por debajo del 30% con más de 70 °C. Pasa al 100% si el sensor deja de informar. Devuelve el control a la placa madre al salir. |
+| **Velocidad real + escala en RPM** | El gráfico marca la velocidad *real* del ventilador (según su sensor de RPM), no solo el % que pide FanCurve, y muestra un segundo eje en RPM a la derecha. Requiere calibrar una vez cada salida. |
+| **Calibración de salidas** | Un botón recorre una salida de 0% a 100% y mide las RPM en cada nivel (*Precisa*: cada 1 %, 4 s por paso; *Rápida*: cada 5 %, 5 s por paso; antes de empezar se muestra el tiempo estimado y durante el proceso, el avance). Detecta el sensor de RPM de esa salida y la velocidad mínima que el ventilador realmente alcanza. |
 | **Curva por defecto superpuesta** | Mientras la placa (y no FanCurve) controla un ventilador, FanCurve registra su comportamiento temperatura/velocidad. Tildá *Mostrar curva por defecto* para verlo como una línea negra punteada fina detrás de tu curva azul personalizada. |
 | **Frecuencia de muestreo seleccionable** | Elegí cada cuánto se leen las temperaturas (de 0,25 s a 5 s) desde la interfaz. |
 | **Tiempo de reacción seleccionable** | Por regla, elegí qué tan rápido sigue el ventilador a la temperatura cuando sube y cuando baja: Inmediato, 0,5 s, 1 s o 2 s. Valores más lentos evitan que los ventiladores suban y bajen constantemente. |
@@ -207,6 +214,7 @@ Todo se edita desde la interfaz. Tus datos viven en `%APPDATA%\FanCurve\` (norma
 |---|---|
 | `config.json` | Tus reglas (curvas, salidas, fuentes, tiempos de reacción) y ajustes: idioma, frecuencia de muestreo y preferencia de *Mostrar curva por defecto*. Se escribe al presionar **Guardar y aplicar**; el idioma y la casilla de la curva por defecto se guardan apenas los cambiás. |
 | `default-curves.json` | La curva por defecto aprendida de tu placa (ver *Curva por defecto superpuesta*). Se puede borrar sin problema; se reconstruye con el tiempo. |
+| `calibrations.json` | Calibraciones de las salidas (tablas duty → RPM). Borralo para volver a calibrar desde cero. |
 
 - **Backup / mover a otra PC:** cerrá FanCurve y copiá `config.json` a la misma carpeta en la otra máquina. Los IDs de salidas y sensores dependen del hardware, así que si el equipo es distinto puede ser necesario reasignar las reglas.
 - **Volver a valores de fábrica:** cerrá FanCurve y borrá la carpeta `FanCurve` indicada arriba.
@@ -220,6 +228,8 @@ La única opción pensada para editar a mano en `config.json` es:
 ## Limitaciones
 
 - El **control** de ventiladores depende de que tu hardware sea compatible con LibreHardwareMonitor (la mayoría de los chips Super I/O Nuvoton/ITE y muchas GPUs). Si en la pestaña Sensores no aparece ningún canal *Control*, FanCurve no puede manejar tus ventiladores.
+- La calibración recorre la salida de 0% a 100%: ejecutala con la PC en reposo. Pausa las reglas de esa salida, se detiene sola si un CPU o GPU llega a 80 °C, y conviene usarla con cuidado en bombas de AIO y ventiladores de CPU.
+- Muchos ventiladores nunca bajan de una velocidad mínima (p. ej. ~20 %) aunque se les pida 0 %. La calibración lo detecta y el gráfico sombrea esa zona.
 - Si el proceso se cierra a la fuerza (por ejemplo, *Finalizar tarea*), los ventiladores quedan en la última velocidad escrita hasta que FanCurve vuelva a iniciarse o se reinicie la PC. Un cierre normal restaura el control automático.
 - La interfaz está disponible en inglés y español (selector de idioma abajo en la ventana; por defecto usa el idioma del sistema).
 

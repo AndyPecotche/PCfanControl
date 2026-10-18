@@ -17,6 +17,8 @@ namespace FanCurve
         public double? CurrentTemp;
         public double? CurrentPercent;   // regla aplicada: punto sobre la curva
         public double? OutputPercent;
+        public Func<double, double> RpmForPercent;   // calibracion: RPM esperadas para un % (eje derecho); null = sin calibrar
+        public double FloorPercent;                  // calibracion: % por debajo del cual el ventilador no baja mas
         public List<CurvePoint> DefaultCurve;   // curva aprendida de la placa (linea negra punteada fina)    // regla no aplicada: velocidad real de la salida (linea azul)
         public event EventHandler Changed;
 
@@ -30,7 +32,7 @@ namespace FanCurve
             MinimumSize = new Size(300, 200);
         }
 
-        Rectangle Plot => new Rectangle(42, 12, Math.Max(10, Width - 60), Math.Max(10, Height - 42));
+        Rectangle Plot => new Rectangle(42, 12, Math.Max(10, Width - 112), Math.Max(10, Height - 42)); // margen derecho para el eje de RPM
 
         PointF ToPx(double t, double p)
         {
@@ -133,7 +135,28 @@ namespace FanCurve
                     g.DrawString(p + "%", Font, txt, 2, a.Y - 7);
                 }
             }
+            // zona "sin efecto": por debajo del piso real del ventilador
+            if (RpmForPercent != null && FloorPercent > 0)
+            {
+                var top = ToPx(TMin, FloorPercent).Y;
+                using (var br = new SolidBrush(Color.FromArgb(40, 120, 120, 120)))
+                    g.FillRectangle(br, r.Left, top, r.Width, r.Bottom - top);
+            }
             g.DrawRectangle(Pens.Gray, r);
+
+            // eje derecho: RPM segun la calibracion de la salida
+            if (RpmForPercent != null)
+            {
+                using (var b = new SolidBrush(Color.SteelBlue))
+                {
+                    g.DrawString("RPM", Font, b, r.Right + 6, r.Top - 11);
+                    for (int p = 0; p <= 100; p += 20)
+                    {
+                        var a = ToPx(TMax, p);
+                        g.DrawString(((int)Math.Round(RpmForPercent(p))).ToString(), Font, b, r.Right + 6, a.Y - 7);
+                    }
+                }
+            }
 
             // curva por defecto: por detras de la personalizada
             if (DefaultCurve != null && DefaultCurve.Count > 0)
