@@ -1,0 +1,20 @@
+services:
+  build:
+    build: .
+    volumes:
+      - ./src:/src
+      - ./dist:/out
+      - nuget:/root/.nuget/packages
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        rm -rf /out/* /tmp/stage
+        dotnet publish /src/FanCurve.csproj -c Release -o /tmp/stage -p:BaseIntermediateOutputPath=/tmp/obj/
+        cp -r /tmp/stage/. /out/
+        cd /tmp/stage && zip -q -r /out/FanCurve-portable.zip .
+        ls -la /out
+
+volumes:
+  nuget:
