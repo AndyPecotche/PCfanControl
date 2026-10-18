@@ -18,6 +18,7 @@ namespace FanCurve
         readonly FanService _svc;
         readonly AppConfig _cfg;       // working copy (applied with "Save and apply")
         bool _startHidden, _loading, _exit;
+        string _appliedFingerprint;    // configuracion que esta corriendo en el servicio
 
         ListBox _list;
         TextBox _name;
@@ -47,6 +48,7 @@ namespace FanCurve
 
             BuildUi();
             BindRules();
+            _appliedFingerprint = Fingerprint();
 
             AppDomain.CurrentDomain.ProcessExit += (s, e) => { if (_svc != null) _svc.Dispose(); };
             AppDomain.CurrentDomain.UnhandledException += (s, e) => { if (_svc != null) _svc.Dispose(); };
@@ -292,7 +294,7 @@ namespace FanCurve
                 _ctl.Items.Clear(); _temp.Items.Clear();
                 _curve.Points = new List<CurvePoint>();
             }
-            _curve.CurrentTemp = null; _curve.CurrentPercent = null;
+            _curve.CurrentTemp = null; _curve.CurrentPercent = null; _curve.OutputPercent = null;
             _curve.Invalidate();
             _status.Text = "";
             _loading = false;
@@ -444,8 +446,20 @@ namespace FanCurve
             try { _cfg.Save(); }
             catch (Exception ex) { MessageBox.Show(L.T("msg.savefail") + ex.Message); return; }
             _svc.SetConfig(_cfg.Clone());
+            _appliedFingerprint = Fingerprint();
             _status.Text = L.T("status.applied");
         }
+
+        // ---------- cambios sin aplicar ----------
+
+        string Fingerprint()
+        {
+            var c = _cfg.Clone();
+            c.Language = null; // el idioma no cuenta como cambio de configuracion
+            return new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(c);
+        }
+
+        bool IsDirty() { return _appliedFingerprint != null && Fingerprint() != _appliedFingerprint; }
 
         // ---------- lectura en vivo ----------
 
@@ -455,15 +469,33 @@ namespace FanCurve
             var snap = _svc.GetSnapshot();
 
             var r = Current;
-            RuleStatus st;
-            if (r != null && snap.Rules.TryGetValue(r.Id, out st))
+            if (r != null)
             {
-                _curve.CurrentTemp = st.Temp;
-                _curve.CurrentPercent = st.Percent;
+                // Temperatura actual de la fuente elegida en el editor, este aplicada la regla o no.
+                SensorInfo tempSensor = snap.Sensors.FirstOrDefault(x => x.Id == r.TempId);
+                SensorInfo outSensor = snap.Sensors.FirstOrDefault(x => x.Id == r.ControlId);
+                _curve.CurrentTemp = tempSensor != null ? tempSensor.Value : null;
+
+                string text = "";
+                RuleStatus st;
+                if (snap.Rules.TryGetValue(r.Id, out st))
+                {
+                    // Regla aplicada: el punto cae sobre la curva.
+                    _curve.CurrentPercent = st.Percent;
+                    _curve.OutputPercent = null;
+                    if (st.Message != null) text = st.Message;
+                    else if (st.Temp.HasValue && st.Percent.HasValue) text = L.F("status.now", st.Temp, st.Percent);
+                }
+                else
+                {
+                    // Regla no aplicada: linea horizontal con el % real que tiene hoy la salida.
+                    _curve.CurrentPercent = null;
+                    _curve.OutputPercent = outSensor != null ? outSensor.Value : null;
+                    text = L.T("status.notapplied");
+                }
+                if (IsDirty()) text += (text.Length > 0 ? "  ·  " : "") + L.T("status.dirty");
+                _status.Text = text;
                 _curve.Invalidate();
-                if (st.Message != null) _status.Text = st.Message;
-                else if (st.Temp.HasValue && st.Percent.HasValue)
-                    _status.Text = L.F("status.now", st.Temp, st.Percent);
             }
 
             _sensors.BeginUpdate();

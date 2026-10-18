@@ -15,7 +15,8 @@ namespace FanCurve
 
         public List<CurvePoint> Points = new List<CurvePoint>();
         public double? CurrentTemp;
-        public double? CurrentPercent;
+        public double? CurrentPercent;   // regla aplicada: punto sobre la curva
+        public double? OutputPercent;    // regla no aplicada: velocidad real de la salida (linea azul)
         public event EventHandler Changed;
 
         int _drag = -1;
@@ -153,12 +154,24 @@ namespace FanCurve
             if (CurrentTemp.HasValue)
             {
                 var x = ToPx(Math.Max(TMin, Math.Min(TMax, CurrentTemp.Value)), 0).X;
-                using (var pen = new Pen(Color.OrangeRed) { DashStyle = DashStyle.Dash })
+                using (var pen = new Pen(Color.Red, 1.5f) { DashStyle = DashStyle.Dash })
                     g.DrawLine(pen, x, r.Top, x, r.Bottom);
                 if (CurrentPercent.HasValue)
                 {
                     var c = ToPx(CurrentTemp.Value, CurrentPercent.Value);
-                    g.FillEllipse(Brushes.OrangeRed, c.X - 4, c.Y - 4, 8, 8);
+                    g.FillEllipse(Brushes.Black, c.X - 4, c.Y - 4, 8, 8);
+                }
+            }
+
+            if (OutputPercent.HasValue)
+            {
+                var y = ToPx(TMin, Math.Max(0, Math.Min(100, OutputPercent.Value))).Y;
+                using (var pen = new Pen(Color.RoyalBlue, 1.5f))
+                    g.DrawLine(pen, r.Left, y, r.Right, y);
+                if (CurrentTemp.HasValue)
+                {
+                    var c = ToPx(Math.Max(TMin, Math.Min(TMax, CurrentTemp.Value)), OutputPercent.Value);
+                    g.FillEllipse(Brushes.Black, c.X - 4, c.Y - 4, 8, 8);
                 }
             }
 
