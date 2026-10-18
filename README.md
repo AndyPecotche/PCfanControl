@@ -8,7 +8,6 @@ One job: map a temperature sensor to a fan speed, run quietly in the tray, start
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=dotnet&logoColor=white)
 ![Size](https://img.shields.io/badge/download-~1%20MB-brightgreen)
-![Build](https://img.shields.io/badge/build-Docker-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 </div>
@@ -25,7 +24,6 @@ FanCurve does **only** fan curves:
 - **~1 MB** portable folder. No installer, no runtime to install (uses the .NET Framework 4.8 that ships with Windows).
 - **Any temperature source for any fan output.** Drive a case fan from the GPU *hot spot*, the CPU fan from the CPU package temperature, or whatever combination you like.
 - **Runs in the background** from logon, hidden in the system tray.
-- **Reproducible build in Docker.** You never have to install a compiler, SDK or language on your machine.
 
 ## Features
 
@@ -47,7 +45,7 @@ FanCurve does **only** fan curves:
    ```powershell
    winget install namazso.PawnIO
    ```
-2. Download or [build](#building-from-source) `FanCurve-portable.zip`, extract it anywhere and run `FanCurve.exe` (it asks for administrator rights).
+2. Download the latest `FanCurve-<version>-win-x64.zip` from the [Releases](../../releases) page, extract it anywhere and run `FanCurve.exe` (it asks for administrator rights).
 3. Open the **Sensors** tab, select a *Control* row and press **Test output at 100%** to see which fan reacts.
 4. In the **Rules** tab press **Add rule**, choose the fan output and the temperature source, and shape the curve.
 5. Press **Save and apply**, and tick **Start with Windows** if you want it to run at every logon.
@@ -65,48 +63,26 @@ FanCurve does **only** fan curves:
 ```
 
 FanCurve reads sensors and writes fan speeds through [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), the same hardware layer used by LibreHardwareMonitor.
-Once per second (configurable) each active rule evaluates its curve and applies the result to its output. Outputs that are no longer driven return to the motherboard's automatic control.
+Several times per second (you choose the sampling rate) each active rule evaluates its curve and applies the result to its output. Outputs that are no longer driven return to the motherboard's automatic control.
 
-## Building from source
+## Updating
 
-The only requirement is **Docker** (with Compose). Nothing else is installed on the host.
-
-```powershell
-docker compose run --rm build
-```
-
-The result lands in `dist/`:
-
-```
-dist/
-├── FanCurve.exe
-├── LibreHardwareMonitorLib.dll
-├── …(dependencies)
-└── FanCurve-<version>-win-x64.zip   # same content, ready to share
-```
-
-The build runs `dotnet publish` inside the official .NET SDK image, cross-compiling a Windows `net48` executable on Linux.
-
-## Releases and versioning
-
-FanCurve follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
-
-- **PATCH** – bug fixes. **MINOR** – new backwards-compatible features. **MAJOR** – breaking changes (e.g. config format).
-- Pre-releases use a suffix: `v1.2.0-rc.1`, `v2.0.0-beta.1`. They are published as *pre-release* on GitHub.
-
-To cut a release, tag a commit on `main` and push the tag:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The [Release workflow](.github/workflows/release.yml) then builds the project in Docker, embeds the version in the executable and attaches `FanCurve-<version>-win-x64.zip` plus `SHA256SUMS.txt` to a new GitHub Release with auto-generated notes.
-Every push to `main` and every pull request is also built by the [CI workflow](.github/workflows/ci.yml).
+Close FanCurve (tray icon → **Exit**), replace the files with the ones from the new zip and start it again. Your rules and settings are kept (see [Configuration](#configuration)).
+Releases marked *Pre-release* on the Releases page are test versions.
 
 ## Configuration
 
-Rules and settings (including the sampling rate and language) are stored in `%APPDATA%\FanCurve\config.json` and edited from the UI. The only advanced option is:
+Everything is edited from the UI. Your data lives in `%APPDATA%\FanCurve\` (usually `C:\Users\<you>\AppData\Roaming\FanCurve\`), **not** next to the executable, so it survives updating or moving the portable folder.
+
+| File | Contents |
+|---|---|
+| `config.json` | Your rules (curves, outputs, sources, reaction times) and settings: language, sampling rate, *Show default curve* preference. Written when you press **Save and apply**; the language and the default-curve checkbox are saved as soon as you change them. |
+| `default-curves.json` | The learned default curve of your motherboard (see *Default curve overlay*). Safe to delete; it is rebuilt over time. |
+
+- **Back up / move to another PC:** close FanCurve and copy `config.json` to the same folder on the other machine. Output and sensor IDs depend on your hardware, so rules may need to be re-assigned if the machine differs.
+- **Reset to defaults:** close FanCurve and delete the `FanCurve` folder above.
+
+The only option meant to be edited by hand in `config.json` is:
 
 | Key | Default | Description |
 |---|---|---|
@@ -152,7 +128,6 @@ FanCurve hace **solo** curvas de ventiladores:
 - **~1 MB** en una carpeta portable. Sin instalador y sin runtime que instalar (usa el .NET Framework 4.8 que ya trae Windows).
 - **Cualquier fuente de temperatura para cualquier salida de ventilador.** Controlá un ventilador de gabinete con el *hot spot* de la GPU, el cooler del CPU con la temperatura del paquete del CPU, o la combinación que quieras.
 - **Corre en segundo plano** desde el inicio de sesión, oculto en la bandeja del sistema.
-- **Compilación reproducible en Docker.** No necesitás instalar compiladores, SDKs ni lenguajes en tu PC.
 
 ## Características
 
@@ -174,7 +149,7 @@ FanCurve hace **solo** curvas de ventiladores:
    ```powershell
    winget install namazso.PawnIO
    ```
-2. Descargá o [compilá](#compilar-desde-el-código-fuente) `FanCurve-<versión>-win-x64.zip`, extraelo donde quieras y ejecutá `FanCurve.exe` (pide permisos de administrador).
+2. Descargá el último `FanCurve-<versión>-win-x64.zip` desde la página de [Releases](../../releases), extraelo donde quieras y ejecutá `FanCurve.exe` (pide permisos de administrador).
 3. En la pestaña **Sensores**, seleccioná una fila *Control* y presioná **Probar salida al 100%** para ver qué ventilador reacciona.
 4. En la pestaña **Reglas**, presioná **Agregar regla**, elegí la salida del ventilador y la fuente de temperatura, y dale forma a la curva.
 5. Presioná **Guardar y aplicar**, y marcá **Iniciar con Windows** si querés que se ejecute en cada inicio de sesión.
@@ -193,48 +168,26 @@ FanCurve hace **solo** curvas de ventiladores:
 ```
 
 FanCurve lee los sensores y escribe las velocidades mediante [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), la misma capa de hardware que usa LibreHardwareMonitor.
-Una vez por segundo (configurable), cada regla activa evalúa su curva y aplica el resultado a su salida. Las salidas que dejan de estar controladas vuelven al control automático de la placa madre.
+Varias veces por segundo (vos elegís la frecuencia de muestreo), cada regla activa evalúa su curva y aplica el resultado a su salida. Las salidas que dejan de estar controladas vuelven al control automático de la placa madre.
 
-## Compilar desde el código fuente
+## Actualizar
 
-El único requisito es **Docker** (con Compose). No se instala nada más en tu PC.
-
-```powershell
-docker compose run --rm build
-```
-
-El resultado queda en `dist/`:
-
-```
-dist/
-├── FanCurve.exe
-├── LibreHardwareMonitorLib.dll
-├── …(dependencias)
-└── FanCurve-<versión>-win-x64.zip   # mismo contenido, listo para compartir
-```
-
-La compilación ejecuta `dotnet publish` dentro de la imagen oficial del SDK de .NET, compilando de forma cruzada un ejecutable `net48` de Windows desde Linux.
-
-## Versiones y lanzamientos
-
-FanCurve sigue el [Versionado Semántico](https://semver.org/lang/es/): `MAJOR.MINOR.PATCH`.
-
-- **PATCH**: corrección de errores. **MINOR**: funciones nuevas compatibles hacia atrás. **MAJOR**: cambios incompatibles (por ejemplo, el formato del archivo de configuración).
-- Las versiones preliminares llevan un sufijo: `v1.2.0-rc.1`, `v2.0.0-beta.1`. Se publican como *pre-release* en GitHub.
-
-Para publicar una versión, creá un tag sobre un commit de `main` y subilo:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-El [workflow de Release](.github/workflows/release.yml) compila el proyecto en Docker, incrusta la versión en el ejecutable y adjunta `FanCurve-<versión>-win-x64.zip` y `SHA256SUMS.txt` a un nuevo Release de GitHub con notas generadas automáticamente.
-Cada push a `main` y cada pull request también se compilan con el [workflow de CI](.github/workflows/ci.yml).
+Cerrá FanCurve (ícono de la bandeja → **Salir**), reemplazá los archivos por los del zip nuevo y volvé a iniciarlo. Tus reglas y ajustes se conservan (ver [Configuración](#configuración)).
+Los Releases marcados como *Pre-release* en la página de Releases son versiones de prueba.
 
 ## Configuración
 
-Las reglas y los ajustes (incluidos la frecuencia de muestreo y el idioma) se guardan en `%APPDATA%\FanCurve\config.json` y se editan desde la interfaz. La única opción avanzada es:
+Todo se edita desde la interfaz. Tus datos viven en `%APPDATA%\FanCurve\` (normalmente `C:\Users\<tu usuario>\AppData\Roaming\FanCurve\`), **no** junto al ejecutable, así que se conservan al actualizar o mover la carpeta portable.
+
+| Archivo | Contenido |
+|---|---|
+| `config.json` | Tus reglas (curvas, salidas, fuentes, tiempos de reacción) y ajustes: idioma, frecuencia de muestreo y preferencia de *Mostrar curva por defecto*. Se escribe al presionar **Guardar y aplicar**; el idioma y la casilla de la curva por defecto se guardan apenas los cambiás. |
+| `default-curves.json` | La curva por defecto aprendida de tu placa (ver *Curva por defecto superpuesta*). Se puede borrar sin problema; se reconstruye con el tiempo. |
+
+- **Backup / mover a otra PC:** cerrá FanCurve y copiá `config.json` a la misma carpeta en la otra máquina. Los IDs de salidas y sensores dependen del hardware, así que si el equipo es distinto puede ser necesario reasignar las reglas.
+- **Volver a valores de fábrica:** cerrá FanCurve y borrá la carpeta `FanCurve` indicada arriba.
+
+La única opción pensada para editar a mano en `config.json` es:
 
 | Clave | Valor por defecto | Descripción |
 |---|---|---|
