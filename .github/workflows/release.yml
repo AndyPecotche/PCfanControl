@@ -22,8 +22,11 @@ jobs:
         run: docker compose run --rm build
 
       - name: Checksums
-        working-directory: dist
-        run: sha256sum FanCurve-${VERSION}-win-x64.zip > SHA256SUMS.txt
+        run: |
+          # el contenedor crea dist/ como root
+          sudo chown -R "$(id -u):$(id -g)" dist
+          cd dist
+          sha256sum FanCurve-${VERSION}-win-x64.zip > SHA256SUMS.txt
 
       - name: Publicar release
         uses: softprops/action-gh-release@v2
